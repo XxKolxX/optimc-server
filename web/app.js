@@ -31,6 +31,7 @@ const urlParams = new URLSearchParams(window.location.search);
 let currentTopic = urlParams.get('topic') || '';
 let sseSource = null;
 window.OptiMC_sharingServer = '';
+let myCloudUuid = localStorage.getItem('optimc_my_cloud_uuid') || '';
 
 // State Variables
 let state = {
@@ -1232,13 +1233,22 @@ function renderPlayerList() {
             }
             
             // 3. Details/Coordinates
-            const detailsSpan = item.querySelector('.player-details span') || item.querySelector('.player-details');
-            if (detailsSpan) {
+            const detailsDiv = item.querySelector('.player-details');
+            if (detailsDiv) {
                 const sourceLabel = p.type === 'friend' ? 
-                    `<span style="font-size: 0.7rem; color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(96,165,250,0.1); font-weight:800; margin-left: 10px;">Znajomy</span>` :
-                    (p.type === 'remote' ? `<span style="font-size: 0.7rem; color: #a7f3d0; border: 1px solid rgba(167,243,208,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(167,243,208,0.1); font-weight:800; margin-left: 10px;">Zdalny</span>` : '');
+                    `<span style="font-size: 0.7rem; color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(96,165,250,0.1); font-weight:800;">Znajomy</span>` :
+                    (p.type === 'remote' ? `<span style="font-size: 0.7rem; color: #a7f3d0; border: 1px solid rgba(167,243,208,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(167,243,208,0.1); font-weight:800;">Zdalny</span>` : '');
                 
-                detailsSpan.innerHTML = `<span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})</span>${sourceLabel}`;
+                const setMeBtnHtml = (isCloudMode && p.type !== 'local') ? 
+                    `<button class="btn-set-me" data-uuid="${p.uuid}" style="font-size: 0.7rem; margin-left: 6px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px; color: #60a5fa; cursor: pointer; font-weight: 800; transition: all 0.2s;">To ja</button>` : '';
+
+                detailsDiv.innerHTML = `
+                    <span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})</span>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        ${sourceLabel}
+                        ${setMeBtnHtml}
+                    </div>
+                `;
             }
             
             // 4. Relative height reference
@@ -1267,6 +1277,20 @@ function renderPlayerList() {
             }
         }
     }
+    
+    // Bind "To ja" button clicks
+    list.querySelectorAll('.btn-set-me').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const uuid = btn.getAttribute('data-uuid');
+            myCloudUuid = uuid;
+            localStorage.setItem('optimc_my_cloud_uuid', myCloudUuid);
+            state.player = null;
+            state.sharedPeers = [];
+            state.focusedPlayerUuid = myCloudUuid;
+            renderPlayerList();
+        });
+    });
     
     updatePlayerFocusUI();
 }
@@ -1316,6 +1340,9 @@ function addSharedPlayerToUI(p, isFriend) {
         `<span style="font-size: 0.7rem; color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(96,165,250,0.1); font-weight:800;">Znajomy</span>` :
         `<span style="font-size: 0.7rem; color: #a7f3d0; border: 1px solid rgba(167,243,208,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(167,243,208,0.1); font-weight:800;">Zdalny</span>`;
 
+    const setMeBtnHtml = isCloudMode ? 
+        `<button class="btn-set-me" data-uuid="${p.uuid}" style="font-size: 0.7rem; margin-left: 6px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px; color: #60a5fa; cursor: pointer; font-weight: 800; transition: all 0.2s;">To ja</button>` : '';
+
     item.innerHTML = `
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
         <div class="player-info">
@@ -1325,7 +1352,10 @@ function addSharedPlayerToUI(p, isFriend) {
             </div>
             <div class="player-details" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})</span>
-                ${sourceLabel}
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    ${sourceLabel}
+                    ${setMeBtnHtml}
+                </div>
             </div>
             <div class="health-bar-container">
                 <div class="health-bar-fill" style="width: ${healthPercent}%"></div>
@@ -1377,6 +1407,9 @@ function addPlayerToUI(p, isLocal) {
     
     const healthPercent = Math.max(0, Math.min(100, (p.health / 20.0) * 100));
     
+    const setMeBtnHtml = (isCloudMode && !isLocal) ? 
+        `<button class="btn-set-me" data-uuid="${p.uuid}" style="font-size: 0.7rem; margin-left: 6px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px; color: #60a5fa; cursor: pointer; font-weight: 800; transition: all 0.2s;">To ja</button>` : '';
+
     item.innerHTML = `
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
         <div class="player-info">
@@ -1384,8 +1417,9 @@ function addPlayerToUI(p, isLocal) {
                 <span class="player-name">${p.name} ${isLocal ? ' (Ja)' : ''}</span>
                 ${relativeHeightHtml}
             </div>
-            <div class="player-details">
+            <div class="player-details" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})</span>
+                ${setMeBtnHtml}
             </div>
             <div class="health-bar-container">
                 <div class="health-bar-fill" style="width: ${healthPercent}%"></div>
@@ -2059,8 +2093,15 @@ function connectToCloudSSE(topic) {
 function handleCloudPeerUpdate(p) {
     const now = Date.now();
     
-    // Check if this peer is the primary player we follow
-    if (!state.player || !state.player.uuid || state.player.uuid === p.senderUuid) {
+    // Check if this peer is the primary player we follow (respect myCloudUuid if set)
+    const isMe = myCloudUuid ? (p.senderUuid === myCloudUuid) : (!state.player || !state.player.uuid || state.player.uuid === p.senderUuid);
+    
+    if (isMe) {
+        if (!myCloudUuid) {
+            myCloudUuid = p.senderUuid;
+            localStorage.setItem('optimc_my_cloud_uuid', myCloudUuid);
+        }
+        
         const oldWorldKey = state.worldKey;
         const oldDim = state.dimension;
         
