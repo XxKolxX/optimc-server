@@ -198,7 +198,8 @@ const server = http.createServer((req, res) => {
         if (isSse) {
             res.writeHead(200, {
                 'Content-Type': 'text/event-stream; charset=utf-8',
-                'Cache-Control': 'no-cache',
+                'Cache-Control': 'no-cache, no-transform',
+                'X-Accel-Buffering': 'no',
                 'Connection': 'keep-alive'
             });
             res.isSse = true;
@@ -207,7 +208,8 @@ const server = http.createServer((req, res) => {
         } else {
             res.writeHead(200, {
                 'Content-Type': 'application/x-ndjson; charset=utf-8',
-                'Cache-Control': 'no-cache',
+                'Cache-Control': 'no-cache, no-transform',
+                'X-Accel-Buffering': 'no',
                 'Connection': 'keep-alive'
             });
             res.isNdjson = true;
