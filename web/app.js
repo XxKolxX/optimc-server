@@ -1068,12 +1068,22 @@ function setOffline() {
 }
 
 async function fetchChunks() {
-    if (!state.worldKey) return;
+    if (!state.worldKey && (!isCloudMode || !currentTopic)) return;
     try {
         const url = isCloudMode 
-            ? `/api/chunks?topic=${currentTopic}&worldKey=${state.worldKey}`
+            ? `/api/chunks?topic=${currentTopic}` + (state.worldKey ? `&worldKey=${state.worldKey}` : '')
             : `/api/chunks?worldKey=${state.worldKey}`;
         const response = await fetch(url);
+        
+        const worldKeyHeader = response.headers.get('X-World-Key');
+        if (worldKeyHeader && state.worldKey !== worldKeyHeader) {
+            const oldWorldKey = state.worldKey;
+            state.worldKey = worldKeyHeader;
+            if (oldWorldKey) {
+                for (let key in tileCache) delete tileCache[key];
+            }
+        }
+        
         state.chunks = await response.json();
     } catch (e) {
         // Ignore
@@ -2036,6 +2046,110 @@ function drawPlayerMarkerOnCanvas(ctxToUse, p, isLocal, convertCoordsFunc, scale
 // Bind pip button click listener
 document.getElementById('btn-pip-map').addEventListener('click', openPipMinimap);
 
+// Saved Channels (Topics) Manager
+function getRecentTopics() {
+    try {
+        const stored = localStorage.getItem('optimc_recent_topics');
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveRecentTopic(topic) {
+    if (!topic) return;
+    let list = getRecentTopics();
+    list = list.filter(t => t !== topic);
+    list.unshift(topic);
+    list = list.slice(0, 5); // keep last 5
+    localStorage.setItem('optimc_recent_topics', JSON.stringify(list));
+    renderRecentTopics();
+}
+
+function removeRecentTopic(topic) {
+    let list = getRecentTopics();
+    list = list.filter(t => t !== topic);
+    localStorage.setItem('optimc_recent_topics', JSON.stringify(list));
+    renderRecentTopics();
+}
+
+function renderRecentTopics() {
+    const listDiv = document.getElementById('sidebar-saved-channels-list');
+    const containerDiv = document.getElementById('sidebar-saved-channels');
+    if (!listDiv || !containerDiv) return;
+
+    const list = getRecentTopics();
+    if (list.length === 0) {
+        containerDiv.style.display = 'none';
+        return;
+    }
+
+    containerDiv.style.display = 'flex';
+    listDiv.innerHTML = '';
+    list.forEach(topic => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.alignItems = 'center';
+        row.style.background = 'rgba(255, 255, 255, 0.03)';
+        row.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+        row.style.borderRadius = '6px';
+        row.style.padding = '4px 8px';
+        row.style.cursor = 'pointer';
+        row.style.fontSize = '0.75rem';
+        row.style.fontFamily = 'monospace';
+        row.style.transition = 'all 0.2s';
+        
+        row.addEventListener('mouseenter', () => {
+            row.style.background = 'rgba(56, 189, 248, 0.08)';
+            row.style.borderColor = 'rgba(56, 189, 248, 0.2)';
+        });
+        row.addEventListener('mouseleave', () => {
+            row.style.background = 'rgba(255, 255, 255, 0.03)';
+            row.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+        });
+
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-delete-recent-topic')) return;
+            const input = document.getElementById('sidebar-topic-input');
+            if (input) input.value = topic;
+            connectToTopic(topic);
+        });
+
+        const displayTopic = topic.length > 20 ? topic.substring(0, 18) + '...' : topic;
+
+        row.innerHTML = `
+            <span style="color: #cbd5e1;">${displayTopic}</span>
+            <button class="btn-delete-recent-topic" style="background: transparent; border: none; color: #ef4444; font-size: 0.8rem; cursor: pointer; padding: 2px 6px; font-weight: 800; transition: color 0.2s;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#ef4444'">✕</button>
+        `;
+
+        row.querySelector('.btn-delete-recent-topic').addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeRecentTopic(topic);
+        });
+
+        listDiv.appendChild(row);
+    });
+}
+
+function connectToTopic(topic) {
+    if (!topic) return;
+    currentTopic = topic;
+    window.history.pushState(null, '', `?topic=${currentTopic}`);
+    saveRecentTopic(currentTopic);
+    connectToCloudSSE(currentTopic);
+    
+    const input = document.getElementById('sidebar-topic-input');
+    if (input) input.value = currentTopic;
+    const statusSpan = document.getElementById('cloud-channel-status');
+    if (statusSpan) {
+        statusSpan.innerText = 'Połączono';
+        statusSpan.style.color = '#10b981';
+    }
+    
+    fetchChunks();
+}
+
 // Start Draw & Initialize
 loadSettings();
 loadSizes();
@@ -2045,10 +2159,34 @@ setupSharingListeners();
 requestAnimationFrame(draw);
 
 if (isCloudMode) {
+    const manager = document.getElementById('cloud-channel-manager');
+    if (manager) manager.style.display = 'flex';
+    
+    const connectBtn = document.getElementById('btn-sidebar-connect');
+    const topicInput = document.getElementById('sidebar-topic-input');
+    if (connectBtn && topicInput) {
+        connectBtn.addEventListener('click', () => {
+            const val = topicInput.value.trim();
+            if (val) connectToTopic(val);
+        });
+        topicInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const val = topicInput.value.trim();
+                if (val) connectToTopic(val);
+            }
+        });
+    }
+    
+    renderRecentTopics();
+
     if (currentTopic) {
-        connectToCloudSSE(currentTopic);
+        connectToTopic(currentTopic);
     } else {
-        showTopicChooserModal();
+        const statusSpan = document.getElementById('cloud-channel-status');
+        if (statusSpan) {
+            statusSpan.innerText = 'Brak kanału';
+            statusSpan.style.color = '#ef4444';
+        }
     }
 } else {
     pollStatus();
