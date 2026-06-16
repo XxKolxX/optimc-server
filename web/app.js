@@ -2173,15 +2173,24 @@ async function fetchActivePlayers(worldKey) {
         
         const now = Date.now();
         state.sharedPeers = [];
+        state.players = [];
+        
+        let mePlayer = null;
+        if (myCloudUuid) {
+            mePlayer = playersList.find(p => p.uuid === myCloudUuid);
+        }
+        if (!mePlayer) {
+            mePlayer = playersList.find(p => p.isModUser);
+        }
+        if (mePlayer) {
+            myCloudUuid = mePlayer.uuid;
+            localStorage.setItem('optimc_my_cloud_uuid', myCloudUuid);
+        }
         
         playersList.forEach(p => {
-            const isMe = myCloudUuid ? (p.uuid === myCloudUuid) : (!state.player || !state.player.uuid || state.player.uuid === p.uuid);
+            const isMe = (mePlayer && p.uuid === mePlayer.uuid);
             
             if (isMe) {
-                if (!myCloudUuid) {
-                    myCloudUuid = p.uuid;
-                    localStorage.setItem('optimc_my_cloud_uuid', myCloudUuid);
-                }
                 state.player = {
                     uuid: p.uuid,
                     name: p.name,
@@ -2198,19 +2207,33 @@ async function fetchActivePlayers(worldKey) {
                     state.focusedPlayerUuid = p.uuid;
                 }
             } else {
-                state.sharedPeers.push({
-                    uuid: p.uuid,
-                    name: p.name,
-                    x: p.x,
-                    y: p.y,
-                    z: p.z,
-                    yaw: p.yaw,
-                    health: p.health,
-                    dimension: p.dimension,
-                    waypoints: p.waypoints || [],
-                    seenPlayers: p.seenPlayers || [],
-                    lastUpdate: now
-                });
+                if (p.isModUser) {
+                    state.sharedPeers.push({
+                        uuid: p.uuid,
+                        name: p.name,
+                        x: p.x,
+                        y: p.y,
+                        z: p.z,
+                        yaw: p.yaw,
+                        health: p.health,
+                        dimension: p.dimension,
+                        waypoints: p.waypoints || [],
+                        seenPlayers: p.seenPlayers || [],
+                        lastUpdate: now
+                    });
+                } else {
+                    state.players.push({
+                        uuid: p.uuid,
+                        name: p.name,
+                        x: p.x,
+                        y: p.y,
+                        z: p.z,
+                        yaw: p.yaw,
+                        health: p.health,
+                        dimension: p.dimension,
+                        lastUpdate: now
+                    });
+                }
             }
         });
         
@@ -2222,6 +2245,8 @@ async function fetchActivePlayers(worldKey) {
 
 function selectWorld(topic, worldKey) {
     if (!topic || !worldKey) return;
+    currentTopic = topic;
+    window.history.pushState(null, '', `?topic=${currentTopic}`);
     const worldObj = { topic, worldKey };
     localStorage.setItem('optimc_last_viewed_world', JSON.stringify(worldObj));
     
@@ -2349,6 +2374,23 @@ function handleCloudPeerUpdate(p) {
         };
         state.worldKey = p.worldKey;
         state.dimension = p.dimension;
+        
+        state.players = [];
+        if (Array.isArray(p.players)) {
+            p.players.forEach(op => {
+                state.players.push({
+                    uuid: op.uuid,
+                    name: op.name,
+                    x: op.x,
+                    y: op.y,
+                    z: op.z,
+                    yaw: op.yaw,
+                    health: op.health,
+                    dimension: p.dimension,
+                    lastUpdate: now
+                });
+            });
+        }
         
         if (!state.focusedPlayerUuid) {
             state.focusedPlayerUuid = p.senderUuid;
