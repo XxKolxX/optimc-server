@@ -1258,7 +1258,7 @@ function renderPlayerList() {
                     `<span style="font-size: 0.7rem; color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(96,165,250,0.1); font-weight:800;">Znajomy</span>` :
                     (p.type === 'remote' ? `<span style="font-size: 0.7rem; color: #a7f3d0; border: 1px solid rgba(167,243,208,0.3); padding: 1px 4px; border-radius: 4px; background: rgba(167,243,208,0.1); font-weight:800;">Zdalny</span>` : '');
                 
-                const setMeBtnHtml = (isCloudMode && p.type !== 'local') ? 
+                const setMeBtnHtml = (isCloudMode && p.type === 'friend') ? 
                     `<button class="btn-set-me" data-uuid="${p.uuid}" style="font-size: 0.7rem; margin-left: 6px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px; color: #60a5fa; cursor: pointer; font-weight: 800; transition: all 0.2s;">To ja</button>` : '';
 
                 detailsDiv.innerHTML = `
@@ -1426,8 +1426,7 @@ function addPlayerToUI(p, isLocal) {
     
     const healthPercent = Math.max(0, Math.min(100, (p.health / 20.0) * 100));
     
-    const setMeBtnHtml = (isCloudMode && !isLocal) ? 
-        `<button class="btn-set-me" data-uuid="${p.uuid}" style="font-size: 0.7rem; margin-left: 6px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px; color: #60a5fa; cursor: pointer; font-weight: 800; transition: all 0.2s;">To ja</button>` : '';
+    const setMeBtnHtml = '';
 
     item.innerHTML = `
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
