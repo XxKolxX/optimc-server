@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptiMC System Dashboard</title>
+    <!-- Modern Premium Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="app.js" defer></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar Panel -->
+        <aside class="sidebar glass">
+            <div class="sidebar-header">
+                <div class="logo-area">
+                    <span class="logo-dot"></span>
+                    <h2>OptiMC <span class="logo-sub">Monitor</span></h2>
+                </div>
+                <div class="status-badge online" id="connection-status">Live</div>
+            </div>
+
+            <!-- Tab Selection -->
+            <div class="tab-container" style="gap: 4px; padding: 10px 10px;">
+                <button class="tab-btn active" id="tab-map" style="font-size: 0.75rem; padding: 6px 4px;">Mapa</button>
+                <button class="tab-btn" id="tab-waypoints" style="font-size: 0.75rem; padding: 6px 4px;">Waypointy</button>
+                <button class="tab-btn" id="tab-settings" style="font-size: 0.75rem; padding: 6px 4px;">Ustawienia</button>
+                <button class="tab-btn" id="tab-help" style="font-size: 0.75rem; padding: 6px 4px;">Pomoc</button>
+            </div>
+
+            <!-- World Map View Info -->
+            <div class="panel-section active-tab-content" id="map-controls">
+                <div class="section-title">Aktywny Wymiar</div>
+                <div class="dimension-selector">
+                    <button class="dim-btn active" id="dim-overworld" data-dim="overworld">Overworld</button>
+                    <button class="dim-btn" id="dim-nether" data-dim="the_nether">Nether</button>
+                    <button class="dim-btn" id="dim-end" data-dim="the_end">The End</button>
+                </div>
+
+                <div class="section-title">Gracze Online</div>
+                <div class="player-list" id="player-list">
+                    <!-- Dynamic content -->
+                    <div class="player-item loading">Ładowanie graczy...</div>
+                </div>
+            </div>
+
+            <!-- Settings (New Tab) -->
+            <div class="panel-section" id="settings-controls" style="display: none;">
+                <div class="section-title">Wyświetlanie Mapy</div>
+                <div class="settings-list">
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-show-height" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż wysokość względną</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-show-hp" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż zdrowie (HP) na mapie</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-show-grid" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż siatkę chunków</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-show-waypoints" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż waypointy na mapie</span>
+                    </label>
+                </div>
+
+                <div class="section-title">Rozmiary Elementów</div>
+                <div class="settings-sliders">
+                    <div class="slider-group">
+                        <label for="size-nick">Wielkość nicku: <span id="val-size-nick">11px</span></label>
+                        <input type="range" id="size-nick" min="8" max="22" value="11">
+                    </div>
+                    <div class="slider-group">
+                        <label for="size-dot">Kropka gracza (główka): <span id="val-size-dot">8px</span></label>
+                        <input type="range" id="size-dot" min="5" max="20" value="8">
+                    </div>
+                    <div class="slider-group">
+                        <label for="size-arrow">Strzałka kierunku: <span id="val-size-arrow">14px</span></label>
+                        <input type="range" id="size-arrow" min="8" max="25" value="14">
+                    </div>
+                    <div class="slider-group">
+                        <label for="size-hp">Pasek HP (wysokość): <span id="val-size-hp">3px</span></label>
+                        <input type="range" id="size-hp" min="2" max="10" value="3">
+                    </div>
+                </div>
+
+                <div class="section-title">Ustawienia Mini-mapy (PiP)</div>
+                <div class="settings-list">
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-pip-show-names" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż nicki graczy</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-pip-show-height" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż wysokość względną</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-pip-show-hp" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż zdrowie (HP)</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-pip-show-waypoints" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż waypointy</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-pip-show-waypoint-names" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Pokaż nazwy waypointów</span>
+                    </label>
+                </div>
+
+                <div class="section-title">Skala Mini-mapy (PiP)</div>
+                <div class="settings-sliders">
+                    <div class="slider-group">
+                        <label for="size-pip-scale">Skala elementów: <span id="val-size-pip-scale">100%</span></label>
+                        <input type="range" id="size-pip-scale" min="50" max="150" value="100">
+                    </div>
+                </div>
+
+                <div class="section-title">Konfiguracja Klawiszy Zoom</div>
+                <div class="settings-sliders">
+                    <div class="slider-group">
+                        <label for="size-zoom-step">Krok zmiany przybliżenia: <span id="val-size-zoom-step">0.5</span></label>
+                        <input type="range" id="size-zoom-step" min="0.1" max="2.0" step="0.1" value="0.5">
+                    </div>
+                    <div class="slider-group">
+                        <label for="size-hold-zoom">Poziom oddalenia (przytrzymanie): <span id="val-size-hold-zoom">0.8</span></label>
+                        <input type="range" id="size-hold-zoom" min="0.1" max="3.0" step="0.1" value="0.8">
+                    </div>
+                </div>
+
+                <div class="section-title">Kooperacja (Współdzielenie Pozycji)</div>
+                <div class="settings-list">
+                    <label class="setting-item">
+                        <input type="checkbox" id="set-share-enabled" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="setting-label">Udostępniaj moją pozycję i otoczenie</span>
+                    </label>
+                </div>
+                 <div class="settings-sliders" style="margin-top: 10px;">
+                    <div class="slider-group">
+                        <label for="set-share-server" style="margin-bottom: 6px;">Serwer udostępniania (zaawansowane):</label>
+                        <input type="text" id="set-share-server" value="https://ntfy.sp-codes.de/" class="text-input-custom">
+                    </div>
+                    <div class="slider-group" id="group-share-link" style="margin-top: 12px; display: none;">
+                        <label style="margin-bottom: 6px; color: var(--text-primary); font-weight: 700;">Link do udostępnienia mapy:</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="share-link-url" readonly class="text-input-custom" style="font-size: 0.8rem; background: rgba(0,0,0,0.25); cursor: default; flex-grow: 1;">
+                            <button id="btn-copy-share-link" class="btn-custom" style="padding: 10px 14px; font-size: 0.8rem; flex-shrink: 0; background: var(--accent); color: var(--bg); border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">Kopiuj</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Waypoints Tab Content -->
+            <div class="panel-section" id="waypoints-controls" style="display: none;">
+                <div class="section-title">Zapisane Waypointy</div>
+                <div class="waypoint-list" id="waypoint-list">
+                    <!-- Dynamic waypoint list -->
+                </div>
+            </div>
+
+            <!-- Help/Instructions Tab Content -->
+            <div class="panel-section" id="help-controls" style="display: none;">
+                <div class="section-title">OptiMC Pomoc</div>
+                <div style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); display: flex; flex-direction: column; gap: 14px; text-align: justify;">
+                    <p><strong style="color: var(--text-primary);">Witaj w panelu monitorowania OptiMC!</strong></p>
+                    <p>Ta strona internetowa pobiera dane o świecie i graczach z Twojego klienta Minecraft i renderuje je w czasie rzeczywistym. Mod działa w pełni lokalnie i jest niewykrywalny dla serwerów multiplayer.</p>
+                    
+                    <h4 style="color: var(--text-primary); margin-top: 8px; font-size: 0.9rem; font-weight: 800;">Zakamuflowane skróty klawiszowe w grze:</h4>
+                    <ul style="padding-left: 16px; margin: 0; display: flex; flex-direction: column; gap: 6px;">
+                        <li><strong>Ustawienia pamięci podręcznej</strong>: Wyświetla szczegóły (nicki, HP, wysokość) na mini-mapie.</li>
+                        <li><strong>Alokacja pamięci +</strong>: Przybliża aktywną mapę (główną lub PiP).</li>
+                        <li><strong>Alokacja pamięci -</strong>: Oddala aktywną mapę (główną lub PiP).</li>
+                        <li><strong>Tymczasowe zwolnienie pamięci</strong>: Oddala aktywną mapę podczas przytrzymania klawisza.</li>
+                    </ul>
+                    
+                    <h4 style="color: var(--text-primary); margin-top: 8px; font-size: 0.9rem; font-weight: 800;">Mini-mapa (Zawsze na wierzchu / PiP) i tryb F11:</h4>
+                    <p>Jeśli uruchamiasz mini-mapę w osobnym pływającym okienku (Picture-in-Picture) i nie wyświetla się ono nad Minecraftem, upewnij się, że:</p>
+                    <ol style="padding-left: 16px; display: flex; flex-direction: column; gap: 6px;">
+                        <li><strong>Nie używasz standardowego pełnego ekranu (klawisz F11)</strong>. Standardowy tryb F11 to tzw. <em>Exclusive Fullscreen</em>, który przejmuje cały ekran i blokuje wszelkie nakładki systemowe.</li>
+                        <li><strong>Uruchom Minecrafta w trybie Borderless Windowed (Okno bez ramek)</strong>. Możesz to zrobić za pomocą darmowych modów na silnik Fabric (np. <em>Borderless Mining</em> lub <em>BorderlessFullscreen</em>) lub grając w zmaksymalizowanym oknie. Wtedy okienko PiP będzie idealnie unosić się nad grą w Chrome/Opera GX!</li>
+                        <li>W przeglądarce <strong>Opera GX</strong> upewnij się, że w ustawieniach masz włączoną opcję sprzętowej akceleracji (Hardware Acceleration) oraz zezwolenie na wyskakujące okienka Document Picture-in-Picture.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Footer info -->
+            <div class="sidebar-footer">
+                <div class="coords-display" id="local-coords">
+                    X: 0 | Y: 0 | Z: 0
+                </div>
+                <div class="footer-buttons">
+                    <button class="btn btn-focus" id="btn-recenter">Zablokuj Widok</button>
+                    <button class="btn btn-clear" id="btn-clear-map">Wyczyść Mapę</button>
+                </div>
+                <button class="btn btn-pip" id="btn-pip-map" style="width: 100%; margin-top: 10px;">📺 Otwórz Mini-mapę (PiP)</button>
+            </div>
+            </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Live Interactive Map Canvas -->
+            <div class="map-view-container" id="map-view-container">
+                <canvas id="map-canvas"></canvas>
+                <!-- Compass Overlay -->
+                <div class="map-overlay compass-overlay glass">N</div>
+                <!-- Zoom Control Overlay -->
+                <div class="map-overlay zoom-overlay glass">
+                    <button id="zoom-in">+</button>
+                    <button id="zoom-out">-</button>
+                    <span id="zoom-percent">100%</span>
+                </div>
+                <!-- Coordinates mouse overlay -->
+                <div class="map-overlay coords-overlay glass" id="mouse-coords">X: 0, Z: 0</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Custom Right Click Context Menu -->
+    <div id="map-context-menu" class="context-menu glass" style="display: none;">
+        <button class="context-menu-item" id="menu-add-waypoint">📍 Dodaj Waypoint</button>
+        <button class="context-menu-item" id="menu-copy-coords">📋 Skopiuj koordynaty</button>
+    </div>
+
+    <!-- Waypoint Modal -->
+    <div id="waypoint-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass">
+            <h3>Dodaj Lokalizację</h3>
+            <div class="input-group">
+                <label for="waypoint-name">Nazwa waypointu:</label>
+                <input type="text" id="waypoint-name" placeholder="np. Dom, Baza, Portal">
+            </div>
+            <div class="input-group">
+                <label for="waypoint-color">Kolor znacznika:</label>
+                <input type="color" id="waypoint-color" value="#ef4444" style="padding: 2px; height: 40px; cursor: pointer; width: 100%;">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" id="modal-cancel">Anuluj</button>
+                <button class="btn" id="modal-save">Zapisz</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

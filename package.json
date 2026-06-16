@@ -1,0 +1,17 @@
+{
+  "name": "optimc-coop-server",
+  "version": "1.0.0",
+  "description": "24/7 Cloud Coop Relay and Map Server for OptiMC Minecraft Mod",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "optimc",
+    "minecraft",
+    "coop",
+    "relay"
+  ],
+  "author": "",
+  "license": "ISC"
+}
