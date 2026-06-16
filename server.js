@@ -46,7 +46,7 @@ function updateActivePlayers(worldKey, playerData) {
         activePlayers[worldKey] = {};
     }
     
-    // Update sender player
+    // Update sender player (this is a player who actually has the mod)
     if (playerData.senderUuid) {
         activePlayers[worldKey][playerData.senderUuid] = {
             uuid: playerData.senderUuid,
@@ -57,14 +57,16 @@ function updateActivePlayers(worldKey, playerData) {
             yaw: Number(playerData.yaw) || 0,
             health: Number(playerData.health) || 20,
             dimension: playerData.dimension || 'overworld',
+            isModUser: true,
             lastSeen: now
         };
     }
     
-    // Update other players seen by sender
+    // Update other players seen by sender (they do not have the mod)
     if (Array.isArray(playerData.players)) {
         playerData.players.forEach(p => {
             if (p.uuid) {
+                const existing = activePlayers[worldKey][p.uuid];
                 activePlayers[worldKey][p.uuid] = {
                     uuid: p.uuid,
                     name: p.name,
@@ -74,6 +76,7 @@ function updateActivePlayers(worldKey, playerData) {
                     yaw: Number(p.yaw) || 0,
                     health: Number(p.health) || 20,
                     dimension: playerData.dimension || 'overworld',
+                    isModUser: existing ? existing.isModUser : false,
                     lastSeen: now
                 };
             }
@@ -190,22 +193,40 @@ const server = http.createServer((req, res) => {
     // Endpoint: GET /:topic/json -> SSE subscription compatible with ntfy.sh
     if (req.method === 'GET' && parts.length === 2 && parts[1] === 'json') {
         const topic = parts[0];
-        res.writeHead(200, {
-            'Content-Type': 'application/x-ndjson; charset=utf-8',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
-        });
+        const isSse = req.headers.accept && req.headers.accept.includes('text/event-stream');
+
+        if (isSse) {
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            });
+            res.isSse = true;
+            console.log(`[SSE] Browser subscriber joined room (SSE): ${topic}.`);
+            res.write('event: open\ndata: {"status":"connected"}\n\n');
+        } else {
+            res.writeHead(200, {
+                'Content-Type': 'application/x-ndjson; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            });
+            res.isNdjson = true;
+            console.log(`[SSE] Subscriber joined room (NDJSON): ${topic}.`);
+            res.write('{"event":"open"}\n');
+        }
 
         if (!subscribers[topic]) {
             subscribers[topic] = [];
         }
         subscribers[topic].push(res);
-        console.log(`[SSE] Subscriber joined room: ${topic}. Total subscribers: ${subscribers[topic].length}`);
 
         // Keep-alive interval (15s)
-        res.write('{"event":"open"}\n');
         const pingInterval = setInterval(() => {
-            res.write('{"event":"keepalive"}\n');
+            if (res.isSse) {
+                res.write('event: keepalive\ndata: {}\n\n');
+            } else {
+                res.write('{"event":"keepalive"}\n');
+            }
         }, 15000);
 
         req.on('close', () => {
@@ -236,14 +257,20 @@ const server = http.createServer((req, res) => {
 
             const list = subscribers[topic];
             if (list && list.length > 0) {
-                const payload = JSON.stringify({
+                const ndjsonPayload = JSON.stringify({
                     event: "message",
                     message: body
                 }) + '\n';
+                
+                const ssePayload = `event: message\ndata: ${JSON.stringify({ event: "message", message: body })}\n\n`;
 
                 list.forEach(client => {
                     try {
-                        client.write(payload);
+                        if (client.isSse) {
+                            client.write(ssePayload);
+                        } else {
+                            client.write(ndjsonPayload);
+                        }
                     } catch (err) {
                         // Dead connection
                     }
