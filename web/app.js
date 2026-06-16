@@ -27,7 +27,8 @@ if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D
 
 // Cloud Mode Detection & Topic
 const isCloudMode = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== '[::1]');
-let currentTopic = '';
+const urlParams = new URLSearchParams(window.location.search);
+let currentTopic = urlParams.get('topic') || '';
 let sseSource = null;
 window.OptiMC_sharingServer = '';
 
