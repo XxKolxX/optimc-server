@@ -154,52 +154,111 @@ const server = http.createServer((req, res) => {
         const topic = url.searchParams.get('topic');
         const worldKey = url.searchParams.get('worldKey');
 
-        if (!topic || !worldKey || topic.includes('..') || worldKey.includes('..')) {
+        if (!topic || topic.includes('..')) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end('[]');
             return;
         }
 
-        const worldFolder = path.join(__dirname, 'tiles', topic, worldKey);
-        fs.readdir(worldFolder, (err, files) => {
-            if (err || !files) {
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end('[]');
-                return;
-            }
+        const getChunks = (wKey) => {
+            const worldFolder = path.join(__dirname, 'tiles', topic, wKey);
+            fs.readdir(worldFolder, (err, files) => {
+                if (err || !files) {
+                    res.writeHead(200, { 
+                        'Content-Type': 'application/json',
+                        'X-World-Key': wKey,
+                        'Access-Control-Expose-Headers': 'X-World-Key'
+                    });
+                    res.end('[]');
+                    return;
+                }
 
-            const chunkFiles = files.filter(name => name.startsWith('chunk_') && name.endsWith('.png'));
-            const list = [];
+                const chunkFiles = files.filter(name => name.startsWith('chunk_') && name.endsWith('.png'));
+                const list = [];
 
-            let pending = chunkFiles.length;
-            if (pending === 0) {
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end('[]');
-                return;
-            }
+                let pending = chunkFiles.length;
+                if (pending === 0) {
+                    res.writeHead(200, { 
+                        'Content-Type': 'application/json',
+                        'X-World-Key': wKey,
+                        'Access-Control-Expose-Headers': 'X-World-Key'
+                    });
+                    res.end('[]');
+                    return;
+                }
 
-            chunkFiles.forEach(name => {
-                const filePath = path.join(worldFolder, name);
-                fs.stat(filePath, (statErr, stats) => {
-                    if (!statErr && stats) {
-                        const coords = name.substring(6, name.length - 4); // cx_cz
-                        const coordParts = coords.split('_');
-                        if (coordParts.length === 2) {
-                            const cx = parseInt(coordParts[0]);
-                            const cz = parseInt(coordParts[1]);
-                            const lastModified = stats.mtimeMs;
-                            list.push([cx, cz, lastModified]);
+                chunkFiles.forEach(name => {
+                    const filePath = path.join(worldFolder, name);
+                    fs.stat(filePath, (statErr, stats) => {
+                        if (!statErr && stats) {
+                            const coords = name.substring(6, name.length - 4); // cx_cz
+                            const coordParts = coords.split('_');
+                            if (coordParts.length === 2) {
+                                const cx = parseInt(coordParts[0]);
+                                const cz = parseInt(coordParts[1]);
+                                const lastModified = stats.mtimeMs;
+                                list.push([cx, cz, lastModified]);
+                            }
                         }
-                    }
 
-                    pending--;
-                    if (pending === 0) {
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify(list));
-                    }
+                        pending--;
+                        if (pending === 0) {
+                            res.writeHead(200, { 
+                                'Content-Type': 'application/json',
+                                'X-World-Key': wKey,
+                                'Access-Control-Expose-Headers': 'X-World-Key'
+                            });
+                            res.end(JSON.stringify(list));
+                        }
+                    });
                 });
             });
-        });
+        };
+
+        if (worldKey && !worldKey.includes('..')) {
+            getChunks(worldKey);
+        } else {
+            // Find the most recently modified subfolder in tiles/topic/
+            const topicFolder = path.join(__dirname, 'tiles', topic);
+            fs.readdir(topicFolder, { withFileTypes: true }, (err, files) => {
+                if (err || !files) {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end('[]');
+                    return;
+                }
+
+                const folders = files.filter(dirent => dirent.isDirectory());
+                if (folders.length === 0) {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end('[]');
+                    return;
+                }
+
+                let pending = folders.length;
+                let latestFolder = null;
+                let latestMtime = 0;
+
+                folders.forEach(f => {
+                    const folderPath = path.join(topicFolder, f.name);
+                    fs.stat(folderPath, (statErr, stats) => {
+                        if (!statErr && stats) {
+                            if (stats.mtimeMs > latestMtime) {
+                                latestMtime = stats.mtimeMs;
+                                latestFolder = f.name;
+                            }
+                        }
+                        pending--;
+                        if (pending === 0) {
+                            if (latestFolder) {
+                                getChunks(latestFolder);
+                            } else {
+                                getChunks(folders[0].name);
+                            }
+                        }
+                    });
+                });
+            });
+        }
         return;
     }
 
