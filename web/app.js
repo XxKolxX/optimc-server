@@ -1463,7 +1463,11 @@ function draw() {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.font = '20px Outfit';
         ctx.textAlign = 'center';
-        ctx.fillText("Brak połączenia z Minecraft. Uruchom grę.", canvas.width / 2, canvas.height / 2);
+        if (isCloudMode) {
+            ctx.fillText("Wybierz serwer / świat z listy po lewej stronie.", canvas.width / 2, canvas.height / 2);
+        } else {
+            ctx.fillText("Brak połączenia z Minecraft. Uruchom grę.", canvas.width / 2, canvas.height / 2);
+        }
         return;
     }
     
@@ -1809,8 +1813,37 @@ function drawPipMinimap() {
 }
 
 function interpolatePlayerPositions() {
+    const now = Date.now();
+    
+    // Clean up inactive local player in cloud mode
+    if (isCloudMode && state.player && state.player.uuid && state.player.lastUpdate && (now - state.player.lastUpdate) > 15000) {
+        delete interpolatedPlayers[state.player.uuid];
+        state.player.uuid = '';
+        renderPlayerList();
+    }
+    
+    // Clean up inactive shared peers
+    if (state.sharedPeers) {
+        const initialLen = state.sharedPeers.length;
+        state.sharedPeers = state.sharedPeers.filter(peer => {
+            const active = (now - peer.lastUpdate) < 15000;
+            if (!active) {
+                delete interpolatedPlayers[peer.uuid];
+                peer.seenPlayers.forEach(sp => {
+                    delete interpolatedPlayers[sp.uuid];
+                });
+            }
+            return active;
+        });
+        if (state.sharedPeers.length !== initialLen) {
+            renderPlayerList();
+        }
+    }
+
     // Local Player
-    interpolateSinglePlayer(state.player, 'local');
+    if (state.player && state.player.uuid) {
+        interpolateSinglePlayer(state.player, 'local');
+    }
     
     // Other Players
     state.players.forEach(p => {
@@ -1831,6 +1864,7 @@ function interpolatePlayerPositions() {
 }
 
 function interpolateSinglePlayer(p, role = 'local') {
+    if (!p || !p.uuid) return;
     const lerp = (start, end, amt) => (1 - amt) * start + amt * end;
     if (!interpolatedPlayers[p.uuid]) {
         interpolatedPlayers[p.uuid] = { x: p.x, z: p.z, yaw: p.yaw };
@@ -2046,108 +2080,154 @@ function drawPlayerMarkerOnCanvas(ctxToUse, p, isLocal, convertCoordsFunc, scale
 // Bind pip button click listener
 document.getElementById('btn-pip-map').addEventListener('click', openPipMinimap);
 
-// Saved Channels (Topics) Manager
-function getRecentTopics() {
+// Cloud Mode Worlds Dropdown Manager
+let availableWorlds = [];
+
+async function fetchAvailableWorlds() {
     try {
-        const stored = localStorage.getItem('optimc_recent_topics');
-        return stored ? JSON.parse(stored) : [];
+        const response = await fetch('/api/worlds');
+        availableWorlds = await response.json();
+        renderWorldDropdown();
     } catch (e) {
-        return [];
+        console.error("Failed to fetch available worlds:", e);
     }
 }
 
-function saveRecentTopic(topic) {
-    if (!topic) return;
-    let list = getRecentTopics();
-    list = list.filter(t => t !== topic);
-    list.unshift(topic);
-    list = list.slice(0, 5); // keep last 5
-    localStorage.setItem('optimc_recent_topics', JSON.stringify(list));
-    renderRecentTopics();
-}
+// Helper to translate worldKey format to display name
+function parseWorldKeyToName(worldKey) {
+    if (!worldKey) return "Nieznany Świat";
+    const isServer = worldKey.startsWith('server_');
+    const isSingle = worldKey.startsWith('singleplayer_');
+    let parts = worldKey.split('_');
+    let name = "Świat";
+    let dimLabel = "Overworld";
 
-function removeRecentTopic(topic) {
-    let list = getRecentTopics();
-    list = list.filter(t => t !== topic);
-    localStorage.setItem('optimc_recent_topics', JSON.stringify(list));
-    renderRecentTopics();
-}
+    if (worldKey.endsWith('_the_nether') || worldKey.endsWith('_nether')) dimLabel = "Nether";
+    else if (worldKey.endsWith('_the_end') || worldKey.endsWith('_end')) dimLabel = "End";
 
-function renderRecentTopics() {
-    const listDiv = document.getElementById('sidebar-saved-channels-list');
-    const containerDiv = document.getElementById('sidebar-saved-channels');
-    if (!listDiv || !containerDiv) return;
-
-    const list = getRecentTopics();
-    if (list.length === 0) {
-        containerDiv.style.display = 'none';
-        return;
+    if (isServer) {
+        if (parts.length >= 3) {
+            const host = parts[1];
+            const port = parts[2];
+            name = `${host}:${port}`;
+        } else {
+            name = worldKey;
+        }
+        return `${name} (${dimLabel})`;
+    } else if (isSingle) {
+        if (parts.length >= 2) {
+            name = parts[1];
+            name = name.charAt(0).toUpperCase() + name.slice(1);
+        } else {
+            name = worldKey;
+        }
+        return `${name} (Singleplayer ${dimLabel})`;
     }
-
-    containerDiv.style.display = 'flex';
-    listDiv.innerHTML = '';
-    list.forEach(topic => {
-        const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.justifyContent = 'space-between';
-        row.style.alignItems = 'center';
-        row.style.background = 'rgba(255, 255, 255, 0.03)';
-        row.style.border = '1px solid rgba(255, 255, 255, 0.05)';
-        row.style.borderRadius = '6px';
-        row.style.padding = '4px 8px';
-        row.style.cursor = 'pointer';
-        row.style.fontSize = '0.75rem';
-        row.style.fontFamily = 'monospace';
-        row.style.transition = 'all 0.2s';
-        
-        row.addEventListener('mouseenter', () => {
-            row.style.background = 'rgba(56, 189, 248, 0.08)';
-            row.style.borderColor = 'rgba(56, 189, 248, 0.2)';
-        });
-        row.addEventListener('mouseleave', () => {
-            row.style.background = 'rgba(255, 255, 255, 0.03)';
-            row.style.borderColor = 'rgba(255, 255, 255, 0.05)';
-        });
-
-        row.addEventListener('click', (e) => {
-            if (e.target.closest('.btn-delete-recent-topic')) return;
-            const input = document.getElementById('sidebar-topic-input');
-            if (input) input.value = topic;
-            connectToTopic(topic);
-        });
-
-        const displayTopic = topic.length > 20 ? topic.substring(0, 18) + '...' : topic;
-
-        row.innerHTML = `
-            <span style="color: #cbd5e1;">${displayTopic}</span>
-            <button class="btn-delete-recent-topic" style="background: transparent; border: none; color: #ef4444; font-size: 0.8rem; cursor: pointer; padding: 2px 6px; font-weight: 800; transition: color 0.2s;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#ef4444'">✕</button>
-        `;
-
-        row.querySelector('.btn-delete-recent-topic').addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeRecentTopic(topic);
-        });
-
-        listDiv.appendChild(row);
-    });
+    return worldKey;
 }
 
-function connectToTopic(topic) {
-    if (!topic) return;
-    currentTopic = topic;
-    window.history.pushState(null, '', `?topic=${currentTopic}`);
-    saveRecentTopic(currentTopic);
-    connectToCloudSSE(currentTopic);
+function renderWorldDropdown() {
+    const select = document.getElementById('sidebar-world-select');
+    if (!select) return;
     
-    const input = document.getElementById('sidebar-topic-input');
-    if (input) input.value = currentTopic;
+    const currentValue = select.value;
+    select.innerHTML = '<option value="">-- Wybierz serwer / świat --</option>';
+    
+    availableWorlds.forEach(w => {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify(w);
+        const statusText = w.onlineCount > 0 ? ` (ONLINE - graczy: ${w.onlineCount})` : ' (OFFLINE)';
+        opt.innerText = parseWorldKeyToName(w.worldKey) + statusText;
+        select.appendChild(opt);
+    });
+    
+    if (currentValue) {
+        select.value = currentValue;
+    } else {
+        const stored = localStorage.getItem('optimc_last_viewed_world');
+        if (stored) {
+            const found = availableWorlds.find(w => JSON.stringify(w) === stored);
+            if (found) {
+                select.value = stored;
+                const worldObj = JSON.parse(stored);
+                selectWorld(worldObj.topic, worldObj.worldKey);
+            }
+        }
+    }
+}
+
+async function fetchActivePlayers(worldKey) {
+    if (!worldKey) return;
+    try {
+        const response = await fetch(`/api/players?worldKey=${encodeURIComponent(worldKey)}`);
+        const playersList = await response.json();
+        
+        const now = Date.now();
+        state.sharedPeers = [];
+        
+        playersList.forEach(p => {
+            const isMe = myCloudUuid ? (p.uuid === myCloudUuid) : (!state.player || !state.player.uuid || state.player.uuid === p.uuid);
+            
+            if (isMe) {
+                if (!myCloudUuid) {
+                    myCloudUuid = p.uuid;
+                    localStorage.setItem('optimc_my_cloud_uuid', myCloudUuid);
+                }
+                state.player = {
+                    uuid: p.uuid,
+                    name: p.name,
+                    x: p.x,
+                    y: p.y,
+                    z: p.z,
+                    yaw: p.yaw,
+                    health: p.health,
+                    dimension: p.dimension,
+                    lastUpdate: now
+                };
+                state.dimension = p.dimension;
+                if (!state.focusedPlayerUuid) {
+                    state.focusedPlayerUuid = p.uuid;
+                }
+            } else {
+                state.sharedPeers.push({
+                    uuid: p.uuid,
+                    name: p.name,
+                    x: p.x,
+                    y: p.y,
+                    z: p.z,
+                    yaw: p.yaw,
+                    health: p.health,
+                    dimension: p.dimension,
+                    waypoints: p.waypoints || [],
+                    seenPlayers: p.seenPlayers || [],
+                    lastUpdate: now
+                });
+            }
+        });
+        
+        renderPlayerList();
+    } catch (e) {
+        console.error("Failed to fetch active players:", e);
+    }
+}
+
+function selectWorld(topic, worldKey) {
+    if (!topic || !worldKey) return;
+    const worldObj = { topic, worldKey };
+    localStorage.setItem('optimc_last_viewed_world', JSON.stringify(worldObj));
+    
+    state.worldKey = worldKey;
+    connectToCloudSSE(topic);
+    
     const statusSpan = document.getElementById('cloud-channel-status');
     if (statusSpan) {
         statusSpan.innerText = 'Połączono';
         statusSpan.style.color = '#10b981';
     }
     
+    for (let key in tileCache) delete tileCache[key];
     fetchChunks();
+    fetchActivePlayers(worldKey);
 }
 
 // Start Draw & Initialize
@@ -2162,32 +2242,31 @@ if (isCloudMode) {
     const manager = document.getElementById('cloud-channel-manager');
     if (manager) manager.style.display = 'flex';
     
-    const connectBtn = document.getElementById('btn-sidebar-connect');
-    const topicInput = document.getElementById('sidebar-topic-input');
-    if (connectBtn && topicInput) {
-        connectBtn.addEventListener('click', () => {
-            const val = topicInput.value.trim();
-            if (val) connectToTopic(val);
-        });
-        topicInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                const val = topicInput.value.trim();
-                if (val) connectToTopic(val);
+    const select = document.getElementById('sidebar-world-select');
+    if (select) {
+        select.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val) {
+                const worldObj = JSON.parse(val);
+                selectWorld(worldObj.topic, worldObj.worldKey);
+            } else {
+                state.worldKey = '';
+                state.player = { name: '', uuid: '', x: 0, y: 0, z: 0, yaw: 0, health: 20 };
+                state.focusedPlayerUuid = null;
+                state.sharedPeers = [];
+                if (sseSource) sseSource.close();
+                const statusSpan = document.getElementById('cloud-channel-status');
+                if (statusSpan) {
+                    statusSpan.innerText = 'Rozłączony';
+                    statusSpan.style.color = '#ef4444';
+                }
+                renderPlayerList();
             }
         });
     }
     
-    renderRecentTopics();
-
-    if (currentTopic) {
-        connectToTopic(currentTopic);
-    } else {
-        const statusSpan = document.getElementById('cloud-channel-status');
-        if (statusSpan) {
-            statusSpan.innerText = 'Brak kanału';
-            statusSpan.style.color = '#ef4444';
-        }
-    }
+    fetchAvailableWorlds();
+    setInterval(fetchAvailableWorlds, 8000); // refresh list of worlds every 8 seconds
 } else {
     pollStatus();
 }
@@ -2230,6 +2309,11 @@ function connectToCloudSSE(topic) {
 
 function handleCloudPeerUpdate(p) {
     const now = Date.now();
+    
+    // Only process updates that match our currently selected worldKey
+    if (state.worldKey && p.worldKey !== state.worldKey) {
+        return;
+    }
     
     // Check if this peer is the primary player we follow (respect myCloudUuid if set)
     const isMe = myCloudUuid ? (p.senderUuid === myCloudUuid) : (!state.player || !state.player.uuid || state.player.uuid === p.senderUuid);
