@@ -33,6 +33,12 @@ let sseSource = null;
 window.OptiMC_sharingServer = '';
 let myCloudUuid = localStorage.getItem('optimc_my_cloud_uuid') || '';
 
+// Clean Minecraft formatting codes from name
+function cleanName(name) {
+    if (!name) return '';
+    return name.replace(/§[0-9a-fk-or]/gi, '');
+}
+
 // State Variables
 let state = {
     active: false,
@@ -271,7 +277,7 @@ function renderWaypointList() {
         item.innerHTML = `
             <div class="waypoint-color-indicator" style="background-color: ${wp.color};"></div>
             <div class="waypoint-info">
-                <span class="waypoint-name">${wp.name}</span>
+                <span class="waypoint-name">${cleanName(wp.name)}</span>
                 <span class="waypoint-coords">X: ${wp.x}, Z: ${wp.z}</span>
             </div>
             <button class="btn-delete-wp" data-id="${wp.id}">✕</button>
@@ -966,8 +972,9 @@ function syncSharedWaypoints(peers) {
             const isDeleted = deletedIds.includes(wp.id);
             
             if (!alreadyExists && !isDeleted) {
-                const wpName = wp.name || "Waypoint";
-                const importedName = wpName.startsWith(`[${peer.name}]`) ? wpName : `[${peer.name}] ${wpName}`;
+                const wpName = cleanName(wp.name) || "Waypoint";
+                const cleanPeerName = cleanName(peer.name);
+                const importedName = wpName.startsWith(`[${cleanPeerName}]`) ? wpName : `[${cleanPeerName}] ${wpName}`;
                 waypoints.push({
                     id: wp.id,
                     name: importedName,
@@ -1091,7 +1098,9 @@ async function fetchChunks() {
 }
 
 // Polling interval tasks
-setInterval(pollStatus, 100);
+if (!isCloudMode) {
+    setInterval(pollStatus, 100);
+}
 setInterval(fetchChunks, 2000); // refresh list of chunks every 2 seconds
 
 // Dimension Button Visual styling
@@ -1217,7 +1226,7 @@ function renderPlayerList() {
             // 0. Update Name if out of sync
             const nameSpan = item.querySelector('.player-name');
             if (nameSpan) {
-                let nameText = p.name;
+                let nameText = cleanName(p.name);
                 if (p.type === 'local') {
                     nameText += ' (Ja)';
                 } else if (p.type === 'friend') {
@@ -1357,7 +1366,7 @@ function addSharedPlayerToUI(p, isFriend) {
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
         <div class="player-info">
             <div class="player-name-row">
-                <span class="player-name">${p.name}${isFriend ? ' (znaj)' : ''}</span>
+                <span class="player-name">${cleanName(p.name)}${isFriend ? ' (znaj)' : ''}</span>
                 ${relativeHeightHtml}
             </div>
             <div class="player-details" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1424,7 +1433,7 @@ function addPlayerToUI(p, isLocal) {
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
         <div class="player-info">
             <div class="player-name-row">
-                <span class="player-name">${p.name} ${isLocal ? ' (Ja)' : ''}</span>
+                <span class="player-name">${cleanName(p.name)} ${isLocal ? ' (Ja)' : ''}</span>
                 ${relativeHeightHtml}
             </div>
             <div class="player-details" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1641,7 +1650,7 @@ function drawWaypoints() {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
         
-        const label = wp.name;
+        const label = cleanName(wp.name);
         ctx.font = '600 10px Outfit';
         const textWidth = ctx.measureText(label).width;
         
@@ -1757,7 +1766,7 @@ function drawPipMinimap() {
                 pipCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
                 pipCtx.lineWidth = 1;
                 
-                const label = wp.name;
+                const label = cleanName(wp.name);
                 const fontSize = Math.max(7, Math.round(9 * pipScale));
                 pipCtx.font = '600 ' + fontSize + 'px Outfit';
                 const textWidth = pipCtx.measureText(label).width;
@@ -2014,7 +2023,7 @@ function drawPlayerMarkerOnCanvas(ctxToUse, p, isLocal, convertCoordsFunc, scale
         
         let label = "";
         if (showNames) {
-            label = p.name;
+            label = cleanName(p.name);
         }
         if (showHeight) {
             const hDiff = Math.round(p.y - state.player.y);
