@@ -5,6 +5,97 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 const subscribers = {}; // topic -> list of Response objects
 
+const WORLDS_FILE = path.join(__dirname, 'worlds.json');
+const activePlayers = {}; // worldKey -> { uuid -> { uuid, name, x, y, z, yaw, health, dimension, lastSeen } }
+
+function getRegisteredWorlds() {
+    try {
+        if (fs.existsSync(WORLDS_FILE)) {
+            const content = fs.readFileSync(WORLDS_FILE, 'utf8');
+            return JSON.parse(content);
+        }
+    } catch (e) {
+        console.error("Error reading worlds file:", e);
+    }
+    return [];
+}
+
+function saveRegisteredWorlds(worlds) {
+    try {
+        fs.writeFileSync(WORLDS_FILE, JSON.stringify(worlds, null, 2), 'utf8');
+    } catch (e) {
+        console.error("Error writing worlds file:", e);
+    }
+}
+
+function registerWorld(topic, worldKey) {
+    if (!topic || !worldKey) return;
+    const worlds = getRegisteredWorlds();
+    const existing = worlds.find(w => w.topic === topic && w.worldKey === worldKey);
+    if (!existing) {
+        worlds.push({ topic, worldKey, registeredAt: Date.now() });
+        saveRegisteredWorlds(worlds);
+        console.log(`[Database] Registered new world: topic=${topic}, worldKey=${worldKey}`);
+    }
+}
+
+function updateActivePlayers(worldKey, playerData) {
+    if (!worldKey || !playerData) return;
+    const now = Date.now();
+    if (!activePlayers[worldKey]) {
+        activePlayers[worldKey] = {};
+    }
+    
+    // Update sender player
+    if (playerData.senderUuid) {
+        activePlayers[worldKey][playerData.senderUuid] = {
+            uuid: playerData.senderUuid,
+            name: playerData.senderName,
+            x: Number(playerData.x) || 0,
+            y: Number(playerData.y) || 0,
+            z: Number(playerData.z) || 0,
+            yaw: Number(playerData.yaw) || 0,
+            health: Number(playerData.health) || 20,
+            dimension: playerData.dimension || 'overworld',
+            lastSeen: now
+        };
+    }
+    
+    // Update other players seen by sender
+    if (Array.isArray(playerData.players)) {
+        playerData.players.forEach(p => {
+            if (p.uuid) {
+                activePlayers[worldKey][p.uuid] = {
+                    uuid: p.uuid,
+                    name: p.name,
+                    x: Number(p.x) || 0,
+                    y: Number(p.y) || 0,
+                    z: Number(p.z) || 0,
+                    yaw: Number(p.yaw) || 0,
+                    health: Number(p.health) || 20,
+                    dimension: playerData.dimension || 'overworld',
+                    lastSeen: now
+                };
+            }
+        });
+    }
+}
+
+function getActivePlayers(worldKey) {
+    const now = Date.now();
+    const playersMap = activePlayers[worldKey] || {};
+    const list = [];
+    for (const uuid in playersMap) {
+        const p = playersMap[uuid];
+        if (now - p.lastSeen < 15000) {
+            list.push(p);
+        } else {
+            delete playersMap[uuid];
+        }
+    }
+    return list;
+}
+
 // Helper to handle CORS headers
 function setCorsHeaders(res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -36,6 +127,11 @@ const server = http.createServer((req, res) => {
             res.writeHead(400, { 'Content-Type': 'text/plain' });
             res.end('Invalid path');
             return;
+        }
+
+        const worldKey = subPathParts[0];
+        if (worldKey) {
+            registerWorld(topic, worldKey);
         }
 
         const filePath = path.join(__dirname, 'tiles', topic, ...subPathParts);
@@ -128,6 +224,16 @@ const server = http.createServer((req, res) => {
             body += chunk.toString();
         });
         req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                if (data && data.worldKey) {
+                    registerWorld(topic, data.worldKey);
+                    updateActivePlayers(data.worldKey, data);
+                }
+            } catch (err) {
+                // Ignore parsing errors
+            }
+
             const list = subscribers[topic];
             if (list && list.length > 0) {
                 const payload = JSON.stringify({
@@ -145,6 +251,71 @@ const server = http.createServer((req, res) => {
             }
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true }));
+        });
+        return;
+    }
+
+    // Endpoint: GET /api/worlds -> Get list of all worlds that have uploaded tiles or are registered
+    if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'worlds') {
+        const tilesBase = path.join(__dirname, 'tiles');
+        const dbWorlds = getRegisteredWorlds();
+        const resultsMap = new Map();
+        
+        // Add database worlds first
+        dbWorlds.forEach(w => {
+            resultsMap.set(`${w.topic}:${w.worldKey}`, { topic: w.topic, worldKey: w.worldKey });
+        });
+
+        const sendResponse = () => {
+            const results = Array.from(resultsMap.values()).map(w => {
+                const onlinePlayers = getActivePlayers(w.worldKey);
+                return {
+                    topic: w.topic,
+                    worldKey: w.worldKey,
+                    onlineCount: onlinePlayers.length,
+                    onlinePlayers: onlinePlayers.map(p => ({ uuid: p.uuid, name: p.name }))
+                };
+            });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(results));
+        };
+
+        fs.access(tilesBase, fs.constants.F_OK, (err) => {
+            if (err) {
+                sendResponse();
+                return;
+            }
+            fs.readdir(tilesBase, { withFileTypes: true }, (readErr, files) => {
+                if (readErr || !files) {
+                    sendResponse();
+                    return;
+                }
+
+                const topics = files.filter(dirent => dirent.isDirectory()).map(dirent => dirent.name);
+                let pendingTopics = topics.length;
+
+                if (pendingTopics === 0) {
+                    sendResponse();
+                    return;
+                }
+
+                topics.forEach(topic => {
+                    const topicDir = path.join(tilesBase, topic);
+                    fs.readdir(topicDir, { withFileTypes: true }, (topicErr, subFiles) => {
+                        if (!topicErr && subFiles) {
+                            const worldKeys = subFiles.filter(dirent => dirent.isDirectory()).map(dirent => dirent.name);
+                            worldKeys.forEach(worldKey => {
+                                resultsMap.set(`${topic}:${worldKey}`, { topic, worldKey });
+                            });
+                        }
+
+                        pendingTopics--;
+                        if (pendingTopics === 0) {
+                            sendResponse();
+                        }
+                    });
+                });
+            });
         });
         return;
     }
@@ -259,6 +430,20 @@ const server = http.createServer((req, res) => {
                 });
             });
         }
+        return;
+    }
+
+    // Endpoint: GET /api/players -> Get active players for a worldKey
+    if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'players') {
+        const worldKey = url.searchParams.get('worldKey');
+        if (!worldKey) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing worldKey' }));
+            return;
+        }
+        const players = getActivePlayers(worldKey);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(players));
         return;
     }
 
