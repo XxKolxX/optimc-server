@@ -1878,7 +1878,7 @@ function interpolateSinglePlayer(p, role = 'local') {
         interpolatedPlayers[p.uuid] = { x: p.x, z: p.z, yaw: p.yaw };
     } else {
         const ip = interpolatedPlayers[p.uuid];
-        const amt = (role === 'local') ? 0.35 : 0.2;
+        const amt = (role === 'local') ? 0.45 : 0.35;
         ip.x = lerp(ip.x, p.x, amt);
         ip.z = lerp(ip.z, p.z, amt);
         
