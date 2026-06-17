@@ -1227,10 +1227,8 @@ function renderPlayerList() {
             const nameSpan = item.querySelector('.player-name');
             if (nameSpan) {
                 let nameText = cleanName(p.name);
-                if (p.type === 'local') {
-                    nameText += ' (Ja)';
-                } else if (p.type === 'friend') {
-                    nameText += ' (znaj)';
+                if (p.type === 'local' || p.type === 'friend') {
+                    nameText += ' (mod)';
                 }
                 if (nameSpan.textContent !== nameText) {
                     nameSpan.textContent = nameText;
@@ -1366,7 +1364,7 @@ function addSharedPlayerToUI(p, isFriend) {
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
         <div class="player-info">
             <div class="player-name-row">
-                <span class="player-name">${cleanName(p.name)}${isFriend ? ' (znaj)' : ''}</span>
+                <span class="player-name">${cleanName(p.name)}${isFriend ? ' (mod)' : ''}</span>
                 ${relativeHeightHtml}
             </div>
             <div class="player-details" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1432,7 +1430,7 @@ function addPlayerToUI(p, isLocal) {
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
         <div class="player-info">
             <div class="player-name-row">
-                <span class="player-name">${cleanName(p.name)} ${isLocal ? ' (Ja)' : ''}</span>
+                <span class="player-name">${cleanName(p.name)} ${isLocal ? ' (mod)' : ''}</span>
                 ${relativeHeightHtml}
             </div>
             <div class="player-details" style="display:flex; justify-content:space-between; align-items:center;">
@@ -2528,3 +2526,21 @@ setInterval(() => {
         }
     }
 }, 2000);
+
+// Sidebar Toggle on Mobile
+const toggleBtn = document.getElementById('sidebar-toggle');
+const sidebar = document.querySelector('.sidebar');
+if (toggleBtn && sidebar) {
+    toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sidebar.classList.toggle('open');
+    });
+    
+    // Close sidebar when clicking on the map canvas
+    document.getElementById('map-canvas').addEventListener('click', () => {
+        if (sidebar.classList.contains('open')) {
+            sidebar.classList.remove('open');
+        }
+    });
+}
+
