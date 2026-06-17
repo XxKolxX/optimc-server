@@ -1132,23 +1132,23 @@ function renderPlayerList() {
         y: state.player.y,
         z: state.player.z,
         health: state.player.health,
-        type: 'local'
+        type: 'local',
+        dimension: state.dimension
     });
     
     // 1. Friends (shared peers)
     if (state.sharedPeers) {
         state.sharedPeers.forEach(peer => {
-            if (peer.dimension === state.dimension) {
-                targetPlayers.push({
-                    uuid: peer.uuid,
-                    name: peer.name,
-                    x: peer.x,
-                    y: peer.y,
-                    z: peer.z,
-                    health: peer.health,
-                    type: 'friend'
-                });
-            }
+            targetPlayers.push({
+                uuid: peer.uuid,
+                name: peer.name,
+                x: peer.x,
+                y: peer.y,
+                z: peer.z,
+                health: peer.health,
+                type: 'friend',
+                dimension: peer.dimension
+            });
         });
     }
 
@@ -1163,7 +1163,8 @@ function renderPlayerList() {
                 y: p.y,
                 z: p.z,
                 health: p.health,
-                type: 'other'
+                type: 'other',
+                dimension: state.dimension
             });
         }
     });
@@ -1183,7 +1184,8 @@ function renderPlayerList() {
                         y: sp.y,
                         z: sp.z,
                         health: sp.health,
-                        type: 'remote'
+                        type: 'remote',
+                        dimension: peer.dimension
                     });
                 }
             });
@@ -1259,8 +1261,17 @@ function renderPlayerList() {
                 const setMeBtnHtml = (isCloudMode && p.type === 'friend') ? 
                     `<button class="btn-set-me" data-uuid="${p.uuid}" style="font-size: 0.7rem; margin-left: 6px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px; color: #60a5fa; cursor: pointer; font-weight: 800; transition: all 0.2s;">To ja</button>` : '';
 
+                let dimLabel = "";
+                if (p.dimension && p.dimension !== state.dimension) {
+                    let friendlyDim = p.dimension;
+                    if (p.dimension === 'overworld') friendlyDim = 'Overworld';
+                    else if (p.dimension === 'the_nether' || p.dimension === 'nether') friendlyDim = 'Nether';
+                    else if (p.dimension === 'the_end' || p.dimension === 'end') friendlyDim = 'End';
+                    dimLabel = ` <span style="font-size: 0.75rem; color: #f59e0b; font-weight: 800;">(${friendlyDim})</span>`;
+                }
+
                 detailsDiv.innerHTML = `
-                    <span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})</span>
+                    <span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})${dimLabel}</span>
                     <div style="display: flex; align-items: center; gap: 4px;">
                         ${sourceLabel}
                         ${setMeBtnHtml}
@@ -1360,6 +1371,15 @@ function addSharedPlayerToUI(p, isFriend) {
     const setMeBtnHtml = isCloudMode ? 
         `<button class="btn-set-me" data-uuid="${p.uuid}" style="font-size: 0.7rem; margin-left: 6px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px; color: #60a5fa; cursor: pointer; font-weight: 800; transition: all 0.2s;">To ja</button>` : '';
 
+    let dimLabel = "";
+    if (p.dimension && p.dimension !== state.dimension) {
+        let friendlyDim = p.dimension;
+        if (p.dimension === 'overworld') friendlyDim = 'Overworld';
+        else if (p.dimension === 'the_nether' || p.dimension === 'nether') friendlyDim = 'Nether';
+        else if (p.dimension === 'the_end' || p.dimension === 'end') friendlyDim = 'End';
+        dimLabel = ` <span style="font-size: 0.75rem; color: #f59e0b; font-weight: 800;">(${friendlyDim})</span>`;
+    }
+
     item.innerHTML = `
         <div class="player-avatar" style="background-image: url('https://mc-heads.net/avatar/${p.uuid}/32');"></div>
         <div class="player-info">
@@ -1368,7 +1388,7 @@ function addSharedPlayerToUI(p, isFriend) {
                 ${relativeHeightHtml}
             </div>
             <div class="player-details" style="display:flex; justify-content:space-between; align-items:center;">
-                <span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})</span>
+                <span>X: ${Math.round(p.x)} Z: ${Math.round(p.z)} (Y: ${Math.round(p.y)})${dimLabel}</span>
                 <div style="display: flex; align-items: center; gap: 4px;">
                     ${sourceLabel}
                     ${setMeBtnHtml}
