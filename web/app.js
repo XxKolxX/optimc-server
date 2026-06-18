@@ -977,11 +977,9 @@ function syncSharedWaypoints(peers) {
             
             if (!alreadyExists && !isDeleted) {
                 const wpName = cleanName(wp.name) || "Waypoint";
-                const cleanPeerName = cleanName(peer.name);
-                const importedName = wpName.startsWith(`[${cleanPeerName}]`) ? wpName : `[${cleanPeerName}] ${wpName}`;
                 waypoints.push({
                     id: wp.id,
-                    name: importedName,
+                    name: wpName,
                     x: wp.x,
                     z: wp.z,
                     dim: wp.dim,
