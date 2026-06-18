@@ -1216,6 +1216,21 @@ function renderPlayerList() {
     
     if (needsRebuild) {
         list.innerHTML = '';
+        if (state.worldKey && state.worldKey.includes('sunlightmc.pl')) {
+            const box = document.createElement('div');
+            box.style.padding = '12px';
+            box.style.fontSize = '0.85rem';
+            box.style.color = '#38bdf8';
+            box.style.background = 'rgba(56, 189, 248, 0.05)';
+            box.style.border = '1px solid rgba(56, 189, 248, 0.15)';
+            box.style.borderRadius = '8px';
+            box.style.marginBottom = '12px';
+            box.innerHTML = `
+                <span style="font-weight: 600;">Serwer SunlightMC używa zewnętrznej mapy Dynmap. Jeśli nie wczytuje się obok, kliknij przycisk:</span>
+                <a href="https://mapa2.sunlightmc.pl/#Insel;flat;514,64,2;2" target="_blank" style="display: block; margin-top: 8px; text-align: center; padding: 8px; background: #38bdf8; color: #000; border-radius: 6px; font-weight: 800; text-decoration: none; transition: opacity 0.2s;">Otwórz Dynmap ↗</a>
+            `;
+            list.appendChild(box);
+        }
         targetPlayers.forEach(p => {
             if (p.type === 'local') {
                 addPlayerToUI(p, true);
@@ -1495,6 +1510,23 @@ function draw() {
     // Clear screen
     ctx.fillStyle = themeClearColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    if (state.worldKey && state.worldKey.includes('sunlightmc.pl')) {
+        const iframe = document.getElementById('dynmap-iframe');
+        const canvasEl = document.getElementById('map-canvas');
+        if (iframe && iframe.style.display === 'none') {
+            iframe.style.display = 'block';
+            canvasEl.style.display = 'none';
+        }
+        return;
+    } else {
+        const iframe = document.getElementById('dynmap-iframe');
+        const canvasEl = document.getElementById('map-canvas');
+        if (iframe && iframe.style.display === 'block') {
+            iframe.style.display = 'none';
+            canvasEl.style.display = 'block';
+        }
+    }
     
     if (!state.active) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
@@ -2132,6 +2164,7 @@ async function fetchAvailableWorlds() {
 
 function parseWorldKeyToName(worldKey) {
     if (!worldKey) return "Nieznany Świat";
+    if (worldKey.includes('sunlightmc.pl')) return "sunlightmc.pl";
     const isServer = worldKey.startsWith('server_');
     const isSingle = worldKey.startsWith('singleplayer_');
     let parts = worldKey.split('_');
@@ -2169,10 +2202,22 @@ function renderWorldDropdown() {
     const currentValue = select.value;
     select.innerHTML = '<option value="">-- Wybierz serwer / świat --</option>';
     
-    availableWorlds.forEach(w => {
+    const sunlightWorld = {
+        topic: 'omc_sunlightmc',
+        worldKey: 'server_sunlightmc.pl_minecraft_overworld',
+        isDynmap: true
+    };
+    
+    let worldsToRender = [...availableWorlds];
+    const alreadyHasSunlight = worldsToRender.some(w => w.worldKey && w.worldKey.includes('sunlightmc.pl'));
+    if (!alreadyHasSunlight) {
+        worldsToRender.push(sunlightWorld);
+    }
+    
+    worldsToRender.forEach(w => {
         const opt = document.createElement('option');
         opt.value = JSON.stringify(w);
-        const statusText = w.onlineCount > 0 ? ` (ONLINE - graczy: ${w.onlineCount})` : ' (OFFLINE)';
+        const statusText = w.isDynmap ? ' (DYNMAP)' : (w.onlineCount > 0 ? ` (ONLINE - graczy: ${w.onlineCount})` : ' (OFFLINE)');
         opt.innerText = parseWorldKeyToName(w.worldKey) + statusText;
         select.appendChild(opt);
     });
