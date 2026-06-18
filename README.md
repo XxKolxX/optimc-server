@@ -1,97 +1,67 @@
-# Instrukcja Wdrożenia - Serwer Coop Relay i Mapy w Chmurze 24/7 (BEZ KARTY PŁATNICZEJ)
+# OptiMC (v2.2.1)
 
-Ten folder zawiera kompletny kod serwera pośredniczącego (relay) oraz strony mapy dla modyfikacji **OptiMC**. Możesz go uruchomić **całkowicie za darmo w chmurze (24/7) bez podawania żadnych danych karty płatniczej** na dwa sposoby, lub **lokalnie na swoim komputerze**.
+**OptiMC** to modyfikacja dla środowiska **Fabric** (Minecraft 1.21.x), która na pierwszy rzut oka (w menu modów Minecrafta oraz w ustawieniach sterowania) wygląda na niewinny mod optymalizacyjny (kamuflaż jako narzędzie do zarządzania alokacją pamięci i pamięcią podręczną). 
 
----
-
-## ☁️ Metoda 1: Render.com (Zalecana - Brak Karty, Bardzo Proste)
-
-Render to popularna platforma, która umożliwia bezpłatne uruchomienie aplikacji Node.js bez podawania karty płatniczej. Jedynym minusem jest to, że darmowe aplikacje przechodzą w stan uśpienia po 15 minutach braku ruchu. Pierwsze wejście po przerwie wybudza serwer przez około 50 sekund, potem działa błyskawicznie.
-
-### Krok 1: Przygotowanie Kodu na GitHubie
-1. Zaloguj się na swoje darmowe konto na portalu **[GitHub](https://github.com/)** (założenie konta jest darmowe i nie wymaga karty).
-2. Stwórz nowe repozytorium (np. o nazwie `optimc-server`).
-3. Prześlij zawartość tego folderu (`coop-server/`) do swojego repozytorium na GitHubie (na samej górze powinny być pliki `server.js`, `package.json` oraz folder `web/`).
-
-### Krok 2: Wdrożenie na Render.com
-1. Zarejestruj się na stronie **[Render.com](https://render.com/)**, wybierając rejestrację przez konto GitHub (**"Sign up with GitHub"**). Karta nie jest wymagana!
-2. W panelu głównym kliknij przycisk **"New"** (w prawym górnym rogu) i wybierz **"Web Service"**.
-3. Połącz swoje konto GitHub i wybierz stworzone wcześniej repozytorium `optimc-server`.
-4. Skonfiguruj ustawienia:
-   - **Name**: `optimc-server` (lub dowolna inna nazwa)
-   - **Runtime**: `Node`
-   - **Build Command**: `npm install` (lub zostaw puste)
-   - **Start Command**: `node server.js`
-   - **Instance Type**: Wybierz **Free** (Darmowy)
-5. Kliknij **"Deploy Web Service"** na dole strony.
-6. Budowanie i uruchamianie potrwa około 2 minuty. Gdy status zmieni się na **Live**, u góry po lewej stronie zobaczysz darmowy adres URL, np.:
-   `https://optimc-server-xxxx.onrender.com`
+W rzeczywistości jest to potężne, w pełni funkcjonalne narzędzie do **kooperacyjnego współdzielenia pozycji graczy, generowania mapy świata w czasie rzeczywistym oraz synchronizacji waypointów** bezpośrednio w przeglądarce internetowej.
 
 ---
 
-## ☁️ Metoda 2: Hugging Face Spaces (Działa 24/7 bez uśpienia - Brak Karty!)
+## Jak działa mod (Opis rzeczywisty / True Description)
 
-Hugging Face pozwala na hostowanie kontenerów Docker całkowicie za darmo. Usługa działa 24/7 bez przechodzenia w stan uśpienia i **nie wymaga podawania karty kredytowej!**
+Mod integruje w sobie trzy główne komponenty uruchamiane lokalnie na kliencie gracza:
+1. **Lokalny serwer mapy (Map Web Server)**: Uruchamia się w tle na porcie `9000` (domyślnie). Serwer ten serwuje interaktywną mapę (Leaflet.js) dostępną pod adresem `http://127.0.0.1:9000/`.
+2. **Dynamiczny renderer chunków (Chunk Renderer)**: Nasłuchuje zdarzeń ładowania chunków w kliencie Minecrafta, konwertuje bloki na kolory i zapisuje wyrenderowane miniatury chunków w formacie `.png` w folderze konfiguracyjnym. Te kafelki (tiles) są następnie przesyłane do przeglądarki oraz na serwer współdzielenia.
+3. **Klient synchronizacji (Location Sharer)**: Wykorzystuje protokół Server-Sent Events (SSE) oraz zapytania HTTP POST do komunikacji z zewnętrznym serwerem koordynującym (np. Render). Dzięki temu pozycje Twoja i Twoich znajomych, ich punkty życia (HP), kierunek patrzenia (yaw), aktualny wymiar oraz waypointy są natychmiast synchronizowane w czasie rzeczywistym.
 
-### Krok 1: Założenie konta i Spaces
-1. Załóż darmowe konto na stronie **[Hugging Face](https://huggingface.co/)** (bez podawania karty).
-2. Kliknij na swój awatar w prawym górnym rogu i wybierz **"New Space"**.
-3. Skonfiguruj Space:
-   - **Space name**: `optimc-server` (lub dowolna nazwa)
-   - **License**: zostaw puste
-   - **Select the Space SDK**: Wybierz **Docker** (to bardzo ważne!)
-   - **Docker template**: Wybierz **Blank**
-   - **Space hardware**: Wybierz **Cpu basic (Free)**
-   - **Space visibility**: Ustaw na **Public** (aby mod mógł wysyłać pakiety)
-4. Kliknij przycisk **"Create Space"** na dole.
-
-### Krok 2: Wrzucenie plików bezpośrednio przez przeglądarkę
-1. Po utworzeniu Space, wejdź w zakładkę **"Files"** (obok zakładki "App").
-2. Kliknij przycisk **"Add file"** -> **"Upload files"**.
-3. Przeciągnij i upuść pliki `server.js` oraz `package.json` z tego folderu i kliknij **"Commit changes..."** na dole.
-4. Następnie wgraj folder `web` (Hugging Face pozwala na wgrywanie całych folderów przez przeciągnięcie ich do okna przeglądarki) i zatwierdź zmiany.
-5. Serwer automatycznie rozpozna plik `package.json`, zbuduje aplikację Docker i ją uruchomi. Status zmieni się na **Running**.
-6. Adres URL Twojego serwera będzie wyglądał następująco:
-   `https://<twój-username>-<nazwa-space>.hf.space`
-   *(Możesz sprawdzić dokładny adres klikając w menu z trzema kropkami w prawym górnym rogu na Hugging Face i wybierając "Embed this Space" -> skopiuj link z pola "Direct URL").*
+### Najważniejsze funkcje:
+* **Brak konieczności instalowania modów na serwerze**: Całość działa w 100% po stronie klienta. Serwer gry widzi Cię jako zwykłego gracza.
+* **Automatyczne pokoje (Auto-Rooms)**: Jeśli nie podasz nazwy pokoju, mod generuje unikalny skrót SHA-256 na podstawie adresu serwera, na którym grasz. Wszyscy Twoi znajomi z tym modkiem na tym samym serwerze automatycznie trafią do tego samego pokoju i zobaczą się na mapie!
+* **Synchronizacja Waypointów**: Każdy waypoint dodany na mapie w przeglądarce jest wysyłany do klienta gry, a stamtąd rozsyłany do wszystkich połączonych znajomych w pokoju. Wspólne cele i bazy są widoczne dla wszystkich od razu.
+* **Integracja z Dynmap**: Mod wykrywa znane serwery (np. `sunlightmc.pl`) i automatycznie integruje oficjalną mapę Dynmap bezpośrednio w oknie przeglądarki, ułatwiając orientację w terenie.
 
 ---
 
-## 💻 Metoda 3: Uruchomienie lokalne na własnym komputerze
+## Ustawienia Kamuflażu (Camouflage Settings)
 
-Jeśli wolisz odpalić serwer lokalnie bez korzystania z chmury, upewnij się, że masz zainstalowany program **Node.js**:
+Wszystkie widoczne w grze opcje sterowania oraz właściwości pliku konfiguracyjnego zostały zamaskowane pod nazwami sugerującymi optymalizację pamięci. Poniżej znajduje się dwujęzyczne zestawienie i wyjaśnienie, co poszczególne opcje robią w rzeczywistości.
 
-1. Otwórz konsolę w tym folderze (`coop-server/`).
-2. Uruchom serwer komendą:
-   ```bash
-   node server.js
-   ```
-3. Serwer uruchomi się na porcie `3000` (dostępny pod adresem `http://localhost:3000`).
-4. Aby Twój znajomy mógł się połączyć bez grzebania w routerze, udostępnij ten port za pomocą darmowej komendy tunelującej w osobnym oknie konsoli:
-   - **Opcja A (przez SSH, wbudowane w Windows)**:
-     ```bash
-     ssh -R 80:localhost:3000 play@localhost.run
-     ```
-     (po zatwierdzeniu otrzymasz w konsoli adres publiczny HTTP, np. `https://xxx.localhost.run`).
-   - **Opcja B (przez Localtunnel)**:
-     ```bash
-     npx localtunnel --port 3000
-     ```
-     (otrzymasz adres publiczny typu `https://xxx.loca.lt`).
+### 1. Klawisze w grze (Controls / Keybindings)
+
+Te klawisze znajdziesz w standardowym menu sterowania Minecrafta:
+
+| Nazwa w grze (English) | Nazwa w grze (Polish) | Rzeczywiste działanie (Polish Explanation) |
+| :--- | :--- | :--- |
+| **`Cache Settings`** | **`Ustawienia pamięci podręcznej`** | Otwiera wewnętrzną flagę aktywności (wysyła stan `tabPressed` jako `true` do API). Może służyć do wyzwalania widoku ustawień lub dodatkowych paneli na mapie. |
+| **`Memory Allocation +`** | **`Alokacja pamięci +`** | Wysyła flagę `zoomInPressed` jako `true`. Pozwala na zdalne przybliżanie widoku mapy w przeglądarce za pomocą klawisza przypisanego w grze. |
+| **`Memory Allocation -`** | **`Alokacja pamięci -`** | Wysyła flagę `zoomOutPressed` jako `true`. Pozwala na zdalne oddalanie widoku mapy w przeglądarce za pomocą klawisza przypisanego w grze. |
+| **`Temporary Cache Release`** | **`Tymczasowe zwolnienie pamięci`**| Wysyła flagę `zoomHoldPressed` jako `true`. Może być używany do wycentrowania mapy na Twojej postaci lub ukrycia/pokazania elementów interfejsu. |
 
 ---
 
-## 🎮 Konfiguracja w Modzie OptiMC
+### 2. Plik konfiguracyjny (`config.properties`)
 
-Gdy już posiadasz swój adres URL w chmurze (np. z Render lub Hugging Face) lub z tunelu:
+Plik znajduje się w folderze `.minecraft/config/optimc/config.properties`.
 
-1. Wejdź na mapę w grze (pod adresem `http://localhost:9000`).
-2. Przejdź do zakładki **Ustawienia**.
-3. W polu **Serwer udostępniania** wklej swój adres URL (np. `https://optimc-server-xxxx.onrender.com/` lub `https://username-space.hf.space/` - upewnij się, że kończy się ukośnikiem `/`).
-4. **Zapisz** ustawienia.
-5. Mod automatycznie przyspieszy wysyłanie pozycji do **500ms** (ponieważ nie korzystacie już z ograniczonego publicznego serwera ntfy).
-6. Wyślij ten sam adres URL swojemu koledze, aby wpisał go u siebie w modzie.
-7. **Podgląd w chmurze**: Możecie teraz obaj otworzyć bezpośrednio adres serwera w przeglądarce, dopisując na końcu parametry, np.:
-   `https://twoja-domena.onrender.com/?topic=omc_skrot_sha256`
-   aby widzieć mapę świata i pozycję bez włączania lokalnego serwera portu `9000`!
-   *(Kod kanału `omc_skrot_sha256` możecie skopiować klikając przycisk "Kopiuj Link do Udostępnienia" w zakładce Ustawienia).*
+| Klucz konfiguracji | Domyślna wartość | Wyjaśnienie działania (Polish Explanation) |
+| :--- | :--- | :--- |
+| **`port`** | `9000` | Port, na którym uruchamia się lokalny serwer HTTP mapy. Zmień go, jeśli port 9000 jest zajęty przez inną aplikację na Twoim komputerze. |
+| **`sharing_enabled`** | `true` | (`true` / `false`) Włącza lub całkowicie wyłącza moduł sieciowy. Gdy jest ustawiony na `false`, mod nie wysyła Twojej pozycji i nie łączy się z serwerem SSE (działa tylko lokalna mapa offline). |
+| **`sharing_server`** | `https://optimc-server.onrender.com/` | Adres URL serwera pośredniczącego SSE. Mod używa go do wysyłania (POST) i odbierania (GET/SSE stream) współdzielonych pozycji graczy oraz kafelków mapy. |
+| **`sharing_room`** | `""` (pusty) | Nazwa pokoju synchronizacji. Jeśli zostawisz to pole puste, mod automatycznie wygeneruje pokój na podstawie adresu IP/domeny serwera Minecraft. Jeśli wpiszesz tu dowolny ciąg znaków (np. `tajny_sojusz`), połączysz się tylko z graczami posiadającymi identyczny klucz pokoju. |
+
+---
+
+## Architektura techniczna (dla deweloperów)
+
+```mermaid
+graph TD
+    MC[Klient Minecraft] -->|Zapis kafelków PNG| LocalFS[(Pliki lokalne /tiles)]
+    MC -->|Uruchamia| HTTP[MapWebServer: Port 9000]
+    HTTP -->|Serwuje index.html / app.js / tiles| Browser[Przeglądarka Web UI]
+    
+    MC -->|POST: własna pozycja, HP, dim| SSE_Srv[Serwer SSE: Render]
+    SSE_Srv -->|GET /stream| MC
+    
+    Browser -->|Dodawanie waypointa: POST /api/waypoints| HTTP
+    HTTP -->|Aktualizacja localWaypointsJson| MC
+    MC -->|Wysyła w payloadzie| SSE_Srv
