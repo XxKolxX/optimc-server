@@ -436,18 +436,21 @@ async function loadSharingSettings() {
         const response = await fetch('/api/settings');
         const data = await response.json();
         document.getElementById('set-share-enabled').checked = data.sharingEnabled;
-        const srv = data.sharingServer || 'https://ntfy.sp-codes.de/';
+        const srv = data.sharingServer || 'https://optimc-server.onrender.com/';
         document.getElementById('set-share-server').value = srv;
         window.OptiMC_sharingServer = srv;
+        const room = data.sharingRoom || '';
+        document.getElementById('set-share-room').value = room;
     } catch (e) {
         console.error("Błąd podczas ładowania ustawień kooperacji:", e);
-        window.OptiMC_sharingServer = 'https://ntfy.sp-codes.de/';
+        window.OptiMC_sharingServer = 'https://optimc-server.onrender.com/';
     }
 }
 
 async function saveSharingSettings() {
     const sharingEnabled = document.getElementById('set-share-enabled').checked;
     const sharingServer = document.getElementById('set-share-server').value;
+    const sharingRoom = document.getElementById('set-share-room').value;
     window.OptiMC_sharingServer = sharingServer;
 
     try {
@@ -456,7 +459,7 @@ async function saveSharingSettings() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ sharingEnabled, sharingServer })
+            body: JSON.stringify({ sharingEnabled, sharingServer, sharingRoom })
         });
     } catch (e) {
         console.error("Błąd podczas zapisywania ustawień kooperacji:", e);
@@ -466,6 +469,7 @@ async function saveSharingSettings() {
 function setupSharingListeners() {
     document.getElementById('set-share-enabled').addEventListener('change', saveSharingSettings);
     document.getElementById('set-share-server').addEventListener('change', saveSharingSettings);
+    document.getElementById('set-share-room').addEventListener('change', saveSharingSettings);
 
     const copyBtn = document.getElementById('btn-copy-share-link');
     if (copyBtn) {
@@ -2119,7 +2123,6 @@ async function fetchAvailableWorlds() {
     }
 }
 
-// Helper to translate worldKey format to display name
 function parseWorldKeyToName(worldKey) {
     if (!worldKey) return "Nieznany Świat";
     const isServer = worldKey.startsWith('server_');
@@ -2281,6 +2284,28 @@ function selectWorld(topic, worldKey) {
     fetchActivePlayers(worldKey);
 }
 
+// Automatically detect local player if Minecraft is running locally
+async function detectLocalPlayer() {
+    try {
+        const response = await fetch('http://127.0.0.1:9000/api/status');
+        const data = await response.json();
+        if (data.active && data.player && data.player.uuid) {
+            const detectedUuid = data.player.uuid;
+            if (myCloudUuid !== detectedUuid) {
+                myCloudUuid = detectedUuid;
+                localStorage.setItem('optimc_my_cloud_uuid', myCloudUuid);
+                console.log("[Cloud] Automatically detected local player UUID from Minecraft client:", myCloudUuid);
+                state.player = null;
+                state.sharedPeers = [];
+                state.focusedPlayerUuid = myCloudUuid;
+                renderPlayerList();
+            }
+        }
+    } catch (e) {
+        // Minecraft local server not running or CORS blocked
+    }
+}
+
 // Start Draw & Initialize
 loadSettings();
 loadSizes();
@@ -2318,6 +2343,8 @@ if (isCloudMode) {
     
     fetchAvailableWorlds();
     setInterval(fetchAvailableWorlds, 8000); // refresh list of worlds every 8 seconds
+    detectLocalPlayer();
+    setInterval(detectLocalPlayer, 5000); // refresh local player detection every 5 seconds
 } else {
     pollStatus();
 }
@@ -2361,8 +2388,16 @@ function connectToCloudSSE(topic) {
 function handleCloudPeerUpdate(p) {
     const now = Date.now();
     
-    // Only process updates that match our currently selected worldKey
-    if (state.worldKey && p.worldKey !== state.worldKey) {
+    // Only process updates that match our currently selected worldKey (normalized)
+    const cleanWorldKey = (key) => {
+        if (!key) return '';
+        if (key.startsWith('server_')) {
+            const parts = key.split('_');
+            return 'server_' + parts[parts.length - 1];
+        }
+        return key;
+    };
+    if (state.worldKey && cleanWorldKey(p.worldKey) !== cleanWorldKey(state.worldKey)) {
         return;
     }
     
