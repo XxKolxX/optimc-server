@@ -5,6 +5,52 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 const subscribers = {}; // topic -> list of Response objects
 
+// In-memory tiles cache to prevent RAM exhaustion from container disk overlay writes on Render
+const tilesCache = {}; // topic -> worldKey -> coord -> { data: Buffer, lastModified: Number }
+const MAX_TILES_PER_TOPIC = 3000; // Cap to ~6-9MB of RAM per topic max
+
+function addTileToCache(topic, worldKey, cx, cz, data) {
+    if (!tilesCache[topic]) {
+        tilesCache[topic] = {};
+    }
+    if (!tilesCache[topic][worldKey]) {
+        tilesCache[topic][worldKey] = {};
+    }
+
+    const now = Date.now();
+    tilesCache[topic][worldKey][`${cx}_${cz}`] = {
+        data: data,
+        lastModified: now
+    };
+
+    // Limit memory usage by cleaning up oldest tiles if total count exceeds the limit
+    let totalTiles = 0;
+    const allTiles = [];
+    for (const wk in tilesCache[topic]) {
+        for (const coord in tilesCache[topic][wk]) {
+            allTiles.push({
+                worldKey: wk,
+                coord: coord,
+                lastModified: tilesCache[topic][wk][coord].lastModified
+            });
+            totalTiles++;
+        }
+    }
+
+    if (totalTiles > MAX_TILES_PER_TOPIC) {
+        allTiles.sort((a, b) => a.lastModified - b.lastModified);
+        const toDeleteCount = totalTiles - MAX_TILES_PER_TOPIC;
+        for (let i = 0; i < toDeleteCount; i++) {
+            const tile = allTiles[i];
+            delete tilesCache[topic][tile.worldKey][tile.coord];
+            if (Object.keys(tilesCache[topic][tile.worldKey]).length === 0) {
+                delete tilesCache[topic][tile.worldKey];
+            }
+        }
+        console.log(`[Cache] Capped tiles for topic ${topic}. Deleted ${toDeleteCount} oldest tiles.`);
+    }
+}
+
 const WORLDS_FILE = path.join(__dirname, 'worlds.json');
 const activePlayers = {}; // worldKey -> { uuid -> { uuid, name, x, y, z, yaw, health, dimension, lastSeen } }
 
@@ -123,70 +169,50 @@ const server = http.createServer((req, res) => {
     if (req.method === 'POST' && parts[0] === 'tiles' && parts.length >= 3) {
         const topic = parts[1];
         const subPathParts = parts.slice(2);
-        const subPath = subPathParts.join('/');
-        
-        // Ensure path traversal protection
-        if (subPath.includes('..') || topic.includes('..')) {
-            res.writeHead(400, { 'Content-Type': 'text/plain' });
-            res.end('Invalid path');
-            return;
-        }
-
         const worldKey = subPathParts[0];
-        if (worldKey) {
-            registerWorld(topic, worldKey);
-        }
-
-        const filePath = path.join(__dirname, 'tiles', topic, ...subPathParts);
-        const dirPath = path.dirname(filePath);
-
-        // Ensure directories exist
-        fs.mkdir(dirPath, { recursive: true }, (err) => {
-            if (err) {
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
-                res.end('Failed to create directory');
+        const filename = subPathParts[1];
+        
+        if (worldKey && filename && filename.startsWith('chunk_') && filename.endsWith('.png')) {
+            const coord = filename.substring(6, filename.length - 4); // cx_cz
+            const coordParts = coord.split('_');
+            if (coordParts.length === 2) {
+                const cx = coordParts[0];
+                const cz = coordParts[1];
+                
+                const chunks = [];
+                req.on('data', chunk => chunks.push(chunk));
+                req.on('end', () => {
+                    const data = Buffer.concat(chunks);
+                    registerWorld(topic, worldKey);
+                    addTileToCache(topic, worldKey, cx, cz, data);
+                    
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true }));
+                });
                 return;
             }
-
-            const writeStream = fs.createWriteStream(filePath);
-            req.pipe(writeStream);
-
-            writeStream.on('finish', () => {
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: true }));
-                console.log(`[Tiles] Saved ${subPath} for topic ${topic}`);
-            });
-
-            writeStream.on('error', (writeErr) => {
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
-                res.end(`Write error: ${writeErr.message}`);
-            });
-        });
+        }
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Invalid tile upload parameters');
         return;
     }
 
     // Endpoint: GET /tiles/:topic/... -> Serve map tile
     if (req.method === 'GET' && parts[0] === 'tiles' && parts.length >= 3) {
         const topic = parts[1];
-        const subPathParts = parts.slice(2);
-        const subPath = subPathParts.join('/');
+        const worldKey = parts[2];
+        const filename = parts[3];
 
-        if (subPath.includes('..') || topic.includes('..')) {
-            res.writeHead(400, { 'Content-Type': 'text/plain' });
-            res.end('Invalid path');
-            return;
-        }
-
-        const filePath = path.join(__dirname, 'tiles', topic, ...subPathParts);
-        fs.access(filePath, fs.constants.F_OK, (err) => {
-            if (err) {
-                res.writeHead(404, { 'Content-Type': 'image/png' });
-                res.end(''); // return empty transparent or just 404
+        if (filename && filename.startsWith('chunk_') && filename.endsWith('.png')) {
+            const coord = filename.substring(6, filename.length - 4); // cx_cz
+            if (tilesCache[topic] && tilesCache[topic][worldKey] && tilesCache[topic][worldKey][coord]) {
+                res.writeHead(200, { 'Content-Type': 'image/png' });
+                res.end(tilesCache[topic][worldKey][coord].data);
                 return;
             }
-            res.writeHead(200, { 'Content-Type': 'image/png' });
-            fs.createReadStream(filePath).pipe(res);
-        });
+        }
+        res.writeHead(404, { 'Content-Type': 'image/png' });
+        res.end('');
         return;
     }
 
@@ -286,7 +312,6 @@ const server = http.createServer((req, res) => {
 
     // Endpoint: GET /api/worlds -> Get list of all worlds that have uploaded tiles or are registered
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'worlds') {
-        const tilesBase = path.join(__dirname, 'tiles');
         const dbWorlds = getRegisteredWorlds();
         const resultsMap = new Map();
         
@@ -295,57 +320,25 @@ const server = http.createServer((req, res) => {
             resultsMap.set(`${w.topic}:${w.worldKey}`, { topic: w.topic, worldKey: w.worldKey });
         });
 
-        const sendResponse = () => {
-            const results = Array.from(resultsMap.values()).map(w => {
-                const onlinePlayers = getActivePlayers(w.worldKey);
-                return {
-                    topic: w.topic,
-                    worldKey: w.worldKey,
-                    onlineCount: onlinePlayers.length,
-                    onlinePlayers: onlinePlayers.map(p => ({ uuid: p.uuid, name: p.name }))
-                };
-            });
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(results));
-        };
-
-        fs.access(tilesBase, fs.constants.F_OK, (err) => {
-            if (err) {
-                sendResponse();
-                return;
+        // Add worlds from in-memory tilesCache
+        for (const t in tilesCache) {
+            for (const wk in tilesCache[t]) {
+                resultsMap.set(`${t}:${wk}`, { topic: t, worldKey: wk });
             }
-            fs.readdir(tilesBase, { withFileTypes: true }, (readErr, files) => {
-                if (readErr || !files) {
-                    sendResponse();
-                    return;
-                }
+        }
 
-                const topics = files.filter(dirent => dirent.isDirectory()).map(dirent => dirent.name);
-                let pendingTopics = topics.length;
-
-                if (pendingTopics === 0) {
-                    sendResponse();
-                    return;
-                }
-
-                topics.forEach(topic => {
-                    const topicDir = path.join(tilesBase, topic);
-                    fs.readdir(topicDir, { withFileTypes: true }, (topicErr, subFiles) => {
-                        if (!topicErr && subFiles) {
-                            const worldKeys = subFiles.filter(dirent => dirent.isDirectory()).map(dirent => dirent.name);
-                            worldKeys.forEach(worldKey => {
-                                resultsMap.set(`${topic}:${worldKey}`, { topic, worldKey });
-                            });
-                        }
-
-                        pendingTopics--;
-                        if (pendingTopics === 0) {
-                            sendResponse();
-                        }
-                    });
-                });
-            });
+        const results = Array.from(resultsMap.values()).map(w => {
+            const onlinePlayers = getActivePlayers(w.worldKey);
+            return {
+                topic: w.topic,
+                worldKey: w.worldKey,
+                onlineCount: onlinePlayers.length,
+                onlinePlayers: onlinePlayers.map(p => ({ uuid: p.uuid, name: p.name }))
+            };
         });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(results));
         return;
     }
 
@@ -354,111 +347,38 @@ const server = http.createServer((req, res) => {
         const topic = url.searchParams.get('topic');
         const worldKey = url.searchParams.get('worldKey');
 
-        if (!topic || topic.includes('..')) {
+        if (!topic) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end('[]');
             return;
         }
 
-        const getChunks = (wKey) => {
-            const worldFolder = path.join(__dirname, 'tiles', topic, wKey);
-            fs.readdir(worldFolder, (err, files) => {
-                if (err || !files) {
-                    res.writeHead(200, { 
-                        'Content-Type': 'application/json',
-                        'X-World-Key': wKey,
-                        'Access-Control-Expose-Headers': 'X-World-Key'
-                    });
-                    res.end('[]');
-                    return;
-                }
-
-                const chunkFiles = files.filter(name => name.startsWith('chunk_') && name.endsWith('.png'));
-                const list = [];
-
-                let pending = chunkFiles.length;
-                if (pending === 0) {
-                    res.writeHead(200, { 
-                        'Content-Type': 'application/json',
-                        'X-World-Key': wKey,
-                        'Access-Control-Expose-Headers': 'X-World-Key'
-                    });
-                    res.end('[]');
-                    return;
-                }
-
-                chunkFiles.forEach(name => {
-                    const filePath = path.join(worldFolder, name);
-                    fs.stat(filePath, (statErr, stats) => {
-                        if (!statErr && stats) {
-                            const coords = name.substring(6, name.length - 4); // cx_cz
-                            const coordParts = coords.split('_');
-                            if (coordParts.length === 2) {
-                                const cx = parseInt(coordParts[0]);
-                                const cz = parseInt(coordParts[1]);
-                                const lastModified = stats.mtimeMs;
-                                list.push([cx, cz, lastModified]);
-                            }
-                        }
-
-                        pending--;
-                        if (pending === 0) {
-                            res.writeHead(200, { 
-                                'Content-Type': 'application/json',
-                                'X-World-Key': wKey,
-                                'Access-Control-Expose-Headers': 'X-World-Key'
-                            });
-                            res.end(JSON.stringify(list));
-                        }
-                    });
-                });
-            });
-        };
-
-        if (worldKey && !worldKey.includes('..')) {
-            getChunks(worldKey);
-        } else {
-            // Find the most recently modified subfolder in tiles/topic/
-            const topicFolder = path.join(__dirname, 'tiles', topic);
-            fs.readdir(topicFolder, { withFileTypes: true }, (err, files) => {
-                if (err || !files) {
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end('[]');
-                    return;
-                }
-
-                const folders = files.filter(dirent => dirent.isDirectory());
-                if (folders.length === 0) {
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end('[]');
-                    return;
-                }
-
-                let pending = folders.length;
-                let latestFolder = null;
-                let latestMtime = 0;
-
-                folders.forEach(f => {
-                    const folderPath = path.join(topicFolder, f.name);
-                    fs.stat(folderPath, (statErr, stats) => {
-                        if (!statErr && stats) {
-                            if (stats.mtimeMs > latestMtime) {
-                                latestMtime = stats.mtimeMs;
-                                latestFolder = f.name;
-                            }
-                        }
-                        pending--;
-                        if (pending === 0) {
-                            if (latestFolder) {
-                                getChunks(latestFolder);
-                            } else {
-                                getChunks(folders[0].name);
-                            }
-                        }
-                    });
-                });
-            });
+        const targetWorldKey = worldKey || (tilesCache[topic] ? Object.keys(tilesCache[topic])[0] : null);
+        if (!targetWorldKey) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end('[]');
+            return;
         }
+
+        const list = [];
+        if (tilesCache[topic] && tilesCache[topic][targetWorldKey]) {
+            for (const coord in tilesCache[topic][targetWorldKey]) {
+                const tile = tilesCache[topic][targetWorldKey][coord];
+                const coordParts = coord.split('_');
+                if (coordParts.length === 2) {
+                    const cx = parseInt(coordParts[0]);
+                    const cz = parseInt(coordParts[1]);
+                    list.push([cx, cz, tile.lastModified]);
+                }
+            }
+        }
+
+        res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'X-World-Key': targetWorldKey,
+            'Access-Control-Expose-Headers': 'X-World-Key'
+        });
+        res.end(JSON.stringify(list));
         return;
     }
 
